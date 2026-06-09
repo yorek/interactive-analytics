@@ -94,10 +94,10 @@ uv run iwtest.py --users 20 --iterations 10 --warehouse STD_WH --workload query2
 Side-by-side comparison:
 
 ```bash
-uv run iwtest.py --users 20 --iterations 10 --compare STD_WH,IW_WH
+uv run iwtest.py --users 20 --iterations 100 --compare STD_WH,IW_WH
 ```
 
-Example `--compare` summary (20 users × 10 iterations, query1):
+Example `--compare` summary (20 users × 100 iterations, query1):
 
 ```
 metric (s)                   STD_WH (X-Small)                  IW_WH (X-Small)    delta (b-a)
@@ -113,12 +113,6 @@ avg rows/q                             364.00                           364.00  
 
 errors                                       0                                0
 wall seconds                            36.157                           13.213
-```
-
-Reproducible run with a fixed seed (default is `42`):
-
-```bash
-uv run iwtest.py --users 20 --iterations 100 --seed 42 --compare STD_WH,IW_WH
 ```
 
 Non-reproducible run (new RNG seed each time):
