@@ -55,6 +55,23 @@ automatically on first use.
 Make sure your `~/.snowflake/connections.toml` has a working connection (the
 default this script targets is `PM`).
 
+### Snowflake test objects (`sql/setup-test.sql`)
+
+Run [`sql/setup-test.sql`](sql/setup-test.sql) once in Snowflake to create the
+database, schema, warehouses, and interactive tables the benchmark expects. In
+brief, it:
+
+1. Creates `IW_PLAYGROUND.IW_TEST` and a standard warehouse `STD_WH`.
+2. Builds two **interactive tables** from TPC-DS 10TB (`CATALOG_SALES_IT` —
+   1999 sales only, clustered on `CS_ITEM_SK`; `DATE_DIM_IT` — full date
+   dimension, clustered on `D_YEAR`, `D_MOY`). Table creation uses a large
+   `STD_WH` size, then scales it back to XSMALL.
+3. Creates an **interactive warehouse** `IW_WH` (XSMALL) and attaches both
+   tables to it.
+
+The script assumes source data in `NC_TPCDS_10TB.TPCDS_SF10TCL`; adjust those
+references if your TPC-DS database/schema names differ.
+
 The target schema must contain `CATALOG_SALES_IT` and `DATE_DIM_IT` (defaults:
 database `IW_PLAYGROUND`, schema `IW_TEST`).
 
