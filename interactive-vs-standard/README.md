@@ -70,7 +70,8 @@ brief, it:
    tables to it.
 
 The script assumes source data in `NC_TPCDS_10TB.TPCDS_SF10TCL`; adjust those
-references if your TPC-DS database/schema names differ.
+references if your TPC-DS database/schema names differ. The TPC-DS 10TB dataset
+is available on the [Snowflake Marketplace](https://app.snowflake.com/marketplace/listing/GZSTZTP0KNB/snowflake-tpc-ds-10tb).
 
 The target schema must contain `CATALOG_SALES_IT` and `DATE_DIM_IT` (defaults:
 database `IW_PLAYGROUND`, schema `IW_TEST`).
