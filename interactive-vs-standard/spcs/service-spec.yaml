@@ -1,0 +1,38 @@
+# Snowpark Container Services job-service spec for the interactive-vs-standard benchmark.
+#
+# This is consumed by EXECUTE JOB SERVICE (see spcs/sql/10_run_benchmark.sql),
+# so there are no `endpoints:` — the container runs the test once and exits.
+#
+# Override BENCH_* values per run via spcs/scripts/run_benchmark.sh.
+spec:
+  containers:
+    - name: iwbench
+      image: /iw_playground/iw_test/iw_repo/iwbench:latest
+      env:
+        BENCH_USERS: "20"
+        BENCH_ITERATIONS: "100"
+        BENCH_COMPARE: "STD_WH,IW_WH"
+        BENCH_WORKLOAD: "query1"
+        BENCH_DATABASE: "IW_PLAYGROUND"
+        BENCH_SCHEMA: "IW_TEST"
+        BENCH_SAMPLE_SIZE: "5000"
+        BENCH_SEED: "42"
+        # Bootstrap warehouse for OAuth helper queries (per-thread USE WAREHOUSE still applies).
+        BENCH_BOOTSTRAP_WAREHOUSE: "STD_WH"
+      resources:
+        requests:
+          memory: 2Gi
+          cpu: 1000m
+        limits:
+          memory: 4Gi
+          cpu: 4000m
+  platformMonitor:
+    # Emit container metrics (CPU, memory, network, storage) to the account event table.
+    # Query with SYSTEM$GET_SERVICE_METRICS or SELECT * FROM SNOWFLAKE.TELEMETRY.EVENTS.
+    metricConfig:
+      groups:
+        - system
+        - system_limits
+        - status
+        - network
+        - storage

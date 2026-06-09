@@ -138,3 +138,12 @@ uv run iwtest.py --users 20 --iterations 10 --compare STD_WH,IW_WH --seed random
 | `--seed`         | `42`                 | RNG seed; use `random` for a different seed each run |
 
 `--warehouse` and `--compare` are mutually exclusive; one is required.
+
+## Run inside Snowpark Container Services
+
+For more precise latency numbers, run the benchmark from inside Snowflake
+itself. The [`spcs/`](spcs/) folder ships a uv-based container image, a job
+service spec, and helper scripts that build the image, push it to an image
+repository, launch the benchmark as an SPCS job service, and fetch its logs.
+Running there removes laptop CPU jitter and WAN round-trip time from the
+measurement. See [`spcs/README.md`](spcs/README.md) for the quickstart.

@@ -10,13 +10,17 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import os
 import random
 import re
 import statistics
 import sys
 import time
+from pathlib import Path
 from typing import Any, Sequence
 import snowflake.connector
+
+_SPCS_TOKEN_PATH = Path("/snowflake/session/token")
 
 DEFAULT_DATABASE = "IW_PLAYGROUND"
 DEFAULT_SCHEMA = "IW_TEST"
@@ -33,7 +37,32 @@ _SAFE_DB_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 _CACHE_WARM_BYTES_PER_SEC = 300 * 1024 * 1024
 
 def snowflake_connect(connection_name: str) -> Any:
-    """Open a Snowflake connection using qmark parameter binding for better performances."""
+    """Open a Snowflake connection using qmark parameter binding for better performances.
+
+    When running inside Snowpark Container Services (SPCS), the OAuth session token
+    mounted at ``/snowflake/session/token`` is used and ``connection_name`` is ignored.
+    The OAuth session has no default warehouse, so the bootstrap warehouse is taken
+    from ``SNOWFLAKE_WAREHOUSE`` (per-thread code still issues its own ``USE WAREHOUSE``).
+    Otherwise, the named connection from ``~/.snowflake/connections.toml`` is used.
+    """
+    if _SPCS_TOKEN_PATH.exists():
+        kwargs: dict[str, Any] = dict(
+            host=os.environ["SNOWFLAKE_HOST"],
+            account=os.environ["SNOWFLAKE_ACCOUNT"],
+            token=_SPCS_TOKEN_PATH.read_text(),
+            authenticator="oauth",
+            paramstyle="qmark",
+        )
+        bootstrap_wh = os.environ.get("SNOWFLAKE_WAREHOUSE")
+        if bootstrap_wh:
+            kwargs["warehouse"] = bootstrap_wh
+        bootstrap_db = os.environ.get("SNOWFLAKE_DATABASE")
+        if bootstrap_db:
+            kwargs["database"] = bootstrap_db
+        bootstrap_schema = os.environ.get("SNOWFLAKE_SCHEMA")
+        if bootstrap_schema:
+            kwargs["schema"] = bootstrap_schema
+        return snowflake.connector.connect(**kwargs)
     return snowflake.connector.connect(
         connection_name=connection_name,
         paramstyle="qmark",
