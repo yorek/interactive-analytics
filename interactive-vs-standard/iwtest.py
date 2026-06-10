@@ -22,13 +22,13 @@ import snowflake.connector
 
 _SPCS_TOKEN_PATH = Path("/snowflake/session/token")
 
-DEFAULT_DATABASE = "IW_PLAYGROUND"
-DEFAULT_SCHEMA = "IW_TEST"
+DEFAULT_DATABASE = "DMAURI_PLAYGROUND"
+DEFAULT_SCHEMA = "ZUTEST"
 DEFAULT_SAMPLE_SIZE = 5000
 DEFAULT_SEED = 42
 
-DEFAULT_STANDARD_WAREHOUSE = "STD_WH"
-DEFAULT_INTERACTIVE_WAREHOUSE = "IW_WH"
+DEFAULT_STANDARD_WAREHOUSE = "DM_STANDARD"
+DEFAULT_INTERACTIVE_WAREHOUSE = "DM_INTERACTIVE"
 
 # Unquoted Snowflake identifiers only (safe to splice into SQL after this check).
 _SAFE_DB_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
@@ -124,14 +124,7 @@ LIMIT {int(limit)};
 def query_sql_q1(database: str, schema: str) -> str:
     """Workload query1: join + filter + group/order by day — main analytical comparison."""
     return f"""
-SELECT d_date, COUNT(*) as C
-FROM {database}.{schema}.CATALOG_SALES_IT AS cs
-INNER JOIN {database}.{schema}.DATE_DIM_IT AS d
-    ON cs.cs_sold_date_sk = d.d_date_sk
-WHERE cs_item_sk = ?
-  AND d_year = 1999
-GROUP BY d_date
-ORDER BY d_date
+SELECT EVENT_TYPE, COUNT(*) AS order_count FROM {database}.{schema}.PERF_TEST_TABLE_INT WHERE TENANT_ID=1 AND EVENT_DATE >= '2026-01-01' AND EVENT_DATE < '2026-02-01' AND REGION IN ('us-east', 'us-west') GROUP BY EVENT_TYPE ORDER BY order_count DESC LIMIT 20;
 """
 
 
@@ -169,8 +162,7 @@ def workload_doc(workload: str) -> str:
 
 
 _COMPARISON_TABLE_NAMES: tuple[str, ...] = (
-    "CATALOG_SALES_IT",
-    "DATE_DIM_IT",
+    "PERF_TEST_TABLE_INT",
 )
 
 WAREHOUSE_CHOICES: tuple[str, ...] = (
@@ -681,14 +673,14 @@ def open_workload_connection(
 def execute_workload_once(cur: Any, qsql: str, item_sk: int) -> tuple[float, int]:
     """Run one bound workload query; return (latency_seconds, row_count). May raise."""
     t0 = time.perf_counter()
-    cur.execute(qsql, (item_sk,))
+    cur.execute(qsql)
     rows = cur.fetchall()
     return time.perf_counter() - t0, len(rows)
 
 
 def warmup_workload_session(cur: Any, qsql: str, item_sk: int) -> int:
     """Run one bound workload query to warm the session; excluded from benchmark timing."""
-    cur.execute(qsql, (item_sk,))
+    cur.execute(qsql)
     return len(cur.fetchall())
 
 
@@ -702,12 +694,13 @@ def worker(
     workload: str,
     items: Sequence[int],
     rng_seed: int,
-) -> tuple[list[float], int, list[int]]:
-    """Run `iterations` of `workload` SQL on one connection; return (latencies_s, errors, row_counts)."""
+) -> tuple[list[float], int, list[int], int]:
+    """Run `iterations` of `workload` SQL on one connection; return (latencies_s, errors, row_counts, queries_executed)."""
     rng = random.Random(rng_seed)
     latencies: list[float] = []
     row_counts: list[int] = []
     errors = 0
+    queries_executed = 0
 
     conn, cur, qsql = open_workload_connection(
         connection_name, warehouse, database, schema, workload
@@ -727,11 +720,12 @@ def worker(
                     file=sys.stderr,
                     flush=True,
                 )
+            queries_executed += 1
     finally:
         cur.close()
         conn.close()
 
-    return latencies, errors, row_counts
+    return latencies, errors, row_counts, queries_executed
 
 
 def run_phase(
@@ -758,6 +752,7 @@ def run_phase(
     all_latencies: list[float] = []
     all_row_counts: list[int] = []
     total_errors = 0
+    total_queries_executed = 0
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=users) as ex:
         futures = [
@@ -778,10 +773,11 @@ def run_phase(
             for i in range(users)
         ]
         for fut in concurrent.futures.as_completed(futures):
-            latencies, errors, row_counts = fut.result()
+            latencies, errors, row_counts, queries_executed = fut.result()
             all_latencies.extend(latencies)
             all_row_counts.extend(row_counts)
             total_errors += errors
+            total_queries_executed += queries_executed
 
     wall_seconds = time.perf_counter() - wall_start
 
@@ -791,6 +787,7 @@ def run_phase(
         "iterations": iterations,
         "wall_seconds": wall_seconds,
         "errors": total_errors,
+        "queries_executed": total_queries_executed,
         "latencies": all_latencies,
         "row_counts": all_row_counts,
     }
@@ -831,7 +828,7 @@ def print_single(result: dict, warehouse_sizes: dict[str, str]) -> None:
     print()
     title = warehouse_display_name(result["warehouse"], warehouse_sizes)
     print(f"=== Result: {title} ===")
-    print(f"  total queries : {len(result['latencies'])}")
+    print(f"  queries executed: {result['queries_executed']}")
     rc = result["row_counts"]
     if rc:
         print(f"  avg rows/query: {statistics.fmean(rc):.2f}")
@@ -895,6 +892,7 @@ def print_compare(
         dcell = f"{delta:>+14.2f}" if ma is not None and mb is not None else f"{'n/a':>14}"
         print(f"{'avg rows/q':<12} {cell(ma)} {cell(mb)} {dcell}")
     print()
+    print(f"{'queries exec':<12} {a['queries_executed']:>32} {b['queries_executed']:>32}")
     print(f"errors        {a['errors']:>32} {b['errors']:>32}")
     print(f"wall seconds  {a['wall_seconds']:>32.3f} {b['wall_seconds']:>32.3f}")
 
@@ -935,7 +933,8 @@ def main() -> int:
             flush=True,
         )
 
-    items = preload_items(args.connection, args.database, args.schema, args.sample_size)
+    items = [1,2,3,4,5,6,7,8,9,10] 
+    # items = preload_items(args.connection, args.database, args.schema, args.sample_size)
 
     if args.compare:
         wh_a, wh_b = args.compare
