@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Run the interactive-vs-standard benchmark locally (default) or on SPCS (--spcs).
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+  cat <<'EOF'
+Usage: run-benchmark [options]
+
+Run the benchmark on your laptop (default) or inside Snowpark Container Services.
+
+  --spcs    Execute on SPCS via spcs/scripts/run-benchmark-spcs.sh (no image rebuild for param changes)
+  -h, --help
+
+All other flags are passed through to iwtest.py (local) or run-benchmark-spcs.sh (SPCS):
+  --users, --iterations, --workload, --database, --schema, --seed,
+  --warehouse, --compare, --connection
+
+If neither --warehouse nor --compare is given, defaults to --compare using
+BENCH_STANDARD_WAREHOUSE,BENCH_INTERACTIVE_WAREHOUSE from .env (or STD_WH,IW_WH).
+
+Examples:
+  ./run-benchmark --users 20 --iterations 100
+  ./run-benchmark --users 20 --iterations 10 --warehouse STD_WH --workload query2
+  ./run-benchmark --spcs --users 20 --iterations 100 --workload query1
+EOF
+}
+
+run_spcs=false
+args=()
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --spcs) run_spcs=true; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+
+if [[ "${run_spcs}" == true ]]; then
+  exec "${SCRIPT_DIR}/spcs/scripts/run-benchmark-spcs.sh" "${args[@]}"
+fi
+
+if [[ -f "${SCRIPT_DIR}/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "${SCRIPT_DIR}/.env"
+  set +a
+fi
+
+has_warehouse_mode=false
+for ((i = 0; i < ${#args[@]}; i++)); do
+  if [[ "${args[$i]}" == --warehouse || "${args[$i]}" == --compare ]]; then
+    has_warehouse_mode=true
+    break
+  fi
+done
+
+if [[ "${has_warehouse_mode}" == false ]]; then
+  std_wh="${BENCH_STANDARD_WAREHOUSE:-STD_WH}"
+  iw_wh="${BENCH_INTERACTIVE_WAREHOUSE:-IW_WH}"
+  args=(--compare "${std_wh},${iw_wh}" "${args[@]}")
+fi
+
+cd "${SCRIPT_DIR}"
+exec uv run iwtest.py "${args[@]}"

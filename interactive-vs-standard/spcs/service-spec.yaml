@@ -3,7 +3,7 @@
 # This is consumed by EXECUTE JOB SERVICE (see spcs/sql/10_run_benchmark.sql),
 # so there are no `endpoints:` — the container runs the test once and exits.
 #
-# Override BENCH_* values per run via spcs/scripts/run_benchmark.sh.
+# Override BENCH_* values per run via spcs/scripts/run-benchmark-spcs.sh or ./run-benchmark --spcs.
 spec:
   containers:
     - name: iwbench

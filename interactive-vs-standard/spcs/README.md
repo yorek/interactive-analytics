@@ -25,10 +25,10 @@ spcs/
 │   ├── 00_setup_spcs.sql    # compute pool, image repo, grants checklist
 │   └── 10_run_benchmark.sql # manual EXECUTE JOB SERVICE template
 └── scripts/
-    ├── build_and_push.sh    # docker build + push to image repo
-    ├── run_benchmark.sh     # EXECUTE JOB SERVICE + status polling
-    ├── get_logs.sh          # SYSTEM$GET_SERVICE_LOGS
-    └── get_metrics.sh       # SYSTEM$GET_SERVICE_METRICS (CPU/mem/net/storage)
+    ├── build_and_push.sh       # docker build + push to image repo
+    ├── run-benchmark-spcs.sh   # EXECUTE JOB SERVICE + status polling
+    ├── get_logs.sh             # SYSTEM$GET_SERVICE_LOGS
+    └── get_metrics.sh          # SYSTEM$GET_SERVICE_METRICS (CPU/mem/net/storage)
 ```
 
 ## Prerequisites
@@ -48,19 +48,22 @@ snow sql -c PM -f spcs/sql/00_setup_spcs.sql
 # 2. Build and push the image.
 ./spcs/scripts/build_and_push.sh
 
-# 3. Run a comparison benchmark.
-BENCH_COMPARE=STD_WH,IW_WH BENCH_USERS=20 BENCH_ITERATIONS=100 \
-  ./spcs/scripts/run_benchmark.sh
+# 3. Run a comparison benchmark (options are injected per job — no image rebuild).
+./run-benchmark --spcs --users 20 --iterations 100 --compare STD_WH,IW_WH
 
 # 4. Re-fetch logs anytime.
 ./spcs/scripts/get_logs.sh
 ```
 
-`run_benchmark.sh` polls until the job reports `DONE`/`FAILED` and prints the
+`run-benchmark-spcs.sh` polls until the job reports `DONE`/`FAILED` and prints the
 container's stdout (the same `[init] / [tables] / [warehouse] / [interactive] /
 metric (s)` output the local CLI prints).
 
 ## Configuration
+
+`run-benchmark-spcs.sh` accepts the same flags as `iwtest.py` and injects them into the
+job spec as `BENCH_*` env vars. You only need to rebuild the image when `iwtest.py`
+or container wiring changes — not when tuning users, iterations, workload, etc.
 
 The container reads benchmark options from `BENCH_*` env vars:
 

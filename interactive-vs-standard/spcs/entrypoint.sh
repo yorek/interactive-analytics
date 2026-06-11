@@ -8,7 +8,7 @@ cd /app
 # Bootstrap warehouse for OAuth-based SPCS connections (no default in connections.toml).
 # Per-thread benchmark code issues its own USE WAREHOUSE; this only covers helper
 # queries (row counts, SHOW WAREHOUSES, preload, cache-warm sizing, etc.).
-: "${BENCH_BOOTSTRAP_WAREHOUSE:=STD_WH}"
+: "${BENCH_BOOTSTRAP_WAREHOUSE:=DM_STANDARD}"
 export SNOWFLAKE_WAREHOUSE="${SNOWFLAKE_WAREHOUSE:-${BENCH_BOOTSTRAP_WAREHOUSE}}"
 export SNOWFLAKE_DATABASE="${SNOWFLAKE_DATABASE:-${BENCH_DATABASE:-IW_PLAYGROUND}}"
 export SNOWFLAKE_SCHEMA="${SNOWFLAKE_SCHEMA:-${BENCH_SCHEMA:-IW_TEST}}"
@@ -30,7 +30,6 @@ fi
 [[ -n "${BENCH_WORKLOAD:-}" ]]    && args+=(--workload "${BENCH_WORKLOAD}")
 [[ -n "${BENCH_DATABASE:-}" ]]    && args+=(--database "${BENCH_DATABASE}")
 [[ -n "${BENCH_SCHEMA:-}" ]]      && args+=(--schema "${BENCH_SCHEMA}")
-[[ -n "${BENCH_SAMPLE_SIZE:-}" ]] && args+=(--sample-size "${BENCH_SAMPLE_SIZE}")
 [[ -n "${BENCH_SEED:-}" ]]        && args+=(--seed "${BENCH_SEED}")
 # --connection is ignored when SPCS token is present, but pass it through if set.
 [[ -n "${BENCH_CONNECTION:-}" ]]  && args+=(--connection "${BENCH_CONNECTION}")

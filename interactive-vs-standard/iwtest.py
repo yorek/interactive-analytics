@@ -1,9 +1,13 @@
 """Parallel Snowflake load test comparing standard vs interactive warehouses.
 
-Runs one of three query workloads in parallel across N concurrent users (threads),
-each running I iterations with a randomized cs_item_sk drawn from a pool
-preloaded from the source table (workload is selectable via --workload; default query1).
-Reports latency stats and average result rows per query to the console.
+Runs one of four query workloads in parallel across N concurrent users (threads),
+each running I iterations (workload is selectable via --workload; default query1).
+query0 is a single-row point lookup by tenant and event date; query1 uses literal
+filters; query2 binds a random TENANT_ID (1–10000), EVENT_DATE
+range (within the last three calendar months), and REGION on every query; query3
+binds tenant, date range, regions, and event type for daily counts sorted by date.
+Reports latency stats and
+average result rows per query to the console.
 """
 
 from __future__ import annotations
@@ -16,25 +20,75 @@ import re
 import statistics
 import sys
 import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Sequence
 import snowflake.connector
+from dotenv import load_dotenv
 
 _SPCS_TOKEN_PATH = Path("/snowflake/session/token")
+_ENV_PATH = Path(__file__).resolve().parent / ".env"
+load_dotenv(_ENV_PATH)
 
-DEFAULT_DATABASE = "DMAURI_PLAYGROUND"
-DEFAULT_SCHEMA = "ZUTEST"
-DEFAULT_SAMPLE_SIZE = 5000
-DEFAULT_SEED = 42
+def _env_str(key: str, fallback: str) -> str:
+    return os.environ.get(key, fallback)
 
-DEFAULT_STANDARD_WAREHOUSE = "DM_STANDARD"
-DEFAULT_INTERACTIVE_WAREHOUSE = "DM_INTERACTIVE"
+DEFAULT_DATABASE = _env_str("BENCH_DATABASE", "IW_PLAYGROUND")
+DEFAULT_SCHEMA = _env_str("BENCH_SCHEMA", "IW_TEST")
+DEFAULT_SEED = int(_env_str("BENCH_SEED", "42"))
+DEFAULT_STANDARD_WAREHOUSE = _env_str("BENCH_STANDARD_WAREHOUSE", "STD_WH")
+DEFAULT_INTERACTIVE_WAREHOUSE = _env_str("BENCH_INTERACTIVE_WAREHOUSE", "IW_WH")
+
+TENANT_ID_MIN = 1
+TENANT_ID_MAX = 10000
+
+Q0_LOOKBACK_MONTHS = 12
+
+Q2_REGIONS: tuple[str, ...] = ("us-east", "us-west", "eu-west", "ap-south")
+Q2_LOOKBACK_MONTHS = 3
+
+Q3_REGIONS: tuple[str, ...] = ("us-east", "us-west", "us-central")
+Q3_EVENT_TYPES: tuple[str, ...] = (
+    "view",
+    "click",
+    "search",
+    "add_to_cart",
+    "remove_from_cart",
+    "update_quantity",
+    "add_to_wishlist",
+    "begin_checkout",
+    "purchase",
+    "refund",
+    "sign_up",
+    "login",
+)
+Q3_DATE_RANGE_MONTHS_MIN = 3
+Q3_DATE_RANGE_MONTHS_MAX = 7
+Q3_END_LOOKBACK_MONTHS = 12
+
+# Snowflake accepts 1–32; default 32 is the platform maximum for high-concurrency runs.
+DEFAULT_MAX_CONCURRENCY_LEVEL = 32
+SNOWFLAKE_MAX_CONCURRENCY_LEVEL_LIMIT = 32
 
 # Unquoted Snowflake identifiers only (safe to splice into SQL after this check).
 _SAFE_DB_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 
 # XS interactive warehouse cache warm rate per Snowflake docs (~300–350 MB/s).
 _CACHE_WARM_BYTES_PER_SEC = 300 * 1024 * 1024
+
+_WORKLOAD_BASE_TABLE = "EVENTS"
+_INTERACTIVE_TABLE_SUFFIX = "_IT"
+
+_COMPARISON_TABLE_NAMES: tuple[str, ...] = (
+    _WORKLOAD_BASE_TABLE,
+)
+
+WAREHOUSE_CHOICES: tuple[str, ...] = (
+    DEFAULT_STANDARD_WAREHOUSE,
+    DEFAULT_INTERACTIVE_WAREHOUSE,
+)
 
 def snowflake_connect(connection_name: str) -> Any:
     """Open a Snowflake connection using qmark parameter binding for better performances.
@@ -109,66 +163,241 @@ def resolve_base_seed(seed: int | None) -> int:
     return seed
 
 
-def preload_sql(database: str, schema: str, limit: int) -> str:
-    """SQL to sample distinct `cs_item_sk` for 1999 sales (pool for bound parameters)."""
+def workload_table_name(warehouse: str) -> str:
+    """Return the benchmark table for `warehouse` (e.g. EVENTS vs EVENTS_IT)."""
+    if is_interactive_warehouse(warehouse):
+        return f"{_WORKLOAD_BASE_TABLE}{_INTERACTIVE_TABLE_SUFFIX}"
+    return _WORKLOAD_BASE_TABLE
+
+
+def _events_table_ref(database: str, schema: str, table_name: str) -> str:
+    """Fully qualified EVENTS / EVENTS_IT table reference."""
+    return f"{database}.{schema}.{table_name}"
+
+
+def _month_bounds(year: int, month: int) -> tuple[date, date]:
+    """Return inclusive month start and exclusive month end."""
+    month_start = date(year, month, 1)
+    if month == 12:
+        month_end = date(year + 1, 1, 1)
+    else:
+        month_end = date(year, month + 1, 1)
+    return month_start, month_end
+
+
+def _recent_month_ranges(anchor: date, months: int) -> list[tuple[date, date]]:
+    """Return (month_start, month_end) pairs for `anchor` month and prior months."""
+    ranges: list[tuple[date, date]] = []
+    year, month = anchor.year, anchor.month
+    for _ in range(months):
+        ranges.append(_month_bounds(year, month))
+        month -= 1
+        if month == 0:
+            month = 12
+            year -= 1
+    return ranges
+
+
+def _random_multi_month_range(
+    rng: random.Random,
+    anchor: date,
+    *,
+    span_months_min: int,
+    span_months_max: int,
+    end_lookback_months: int,
+) -> tuple[date, date]:
+    """Return (range_start, range_end) for a random multi-month window ending in lookback."""
+    span_months = rng.randint(span_months_min, span_months_max)
+    _, range_end = rng.choice(_recent_month_ranges(anchor, end_lookback_months))
+    year, month = range_end.year, range_end.month
+    for _ in range(span_months):
+        month -= 1
+        if month == 0:
+            month = 12
+            year -= 1
+    range_start, _ = _month_bounds(year, month)
+    return range_start, range_end
+
+
+def _random_tenant_id(rng: random.Random) -> int:
+    return rng.randint(TENANT_ID_MIN, TENANT_ID_MAX)
+
+
+def _random_event_date(rng: random.Random, anchor: date | None = None) -> str:
+    """Return a random ISO date within the recent-month lookback window."""
+    today = anchor or date.today()
+    month_start, month_end = rng.choice(
+        _recent_month_ranges(today, Q0_LOOKBACK_MONTHS)
+    )
+    day_count = (month_end - month_start).days
+    offset = rng.randrange(day_count) if day_count else 0
+    return (month_start + timedelta(days=offset)).isoformat()
+
+
+def _sql_query0(database: str, schema: str, table_name: str) -> str:
+    """Query 0: single-row point lookup by tenant and event date."""
+    events = _events_table_ref(database, schema, table_name)
     return f"""
-SELECT DISTINCT cs_item_sk
-FROM {database}.{schema}.CATALOG_SALES_IT AS cs
-INNER JOIN {database}.{schema}.DATE_DIM_IT AS d
-    ON cs.cs_sold_date_sk = d.d_date_sk
-  AND d_year = 1999
-LIMIT {int(limit)};
-"""
-
-
-def query_sql_q1(database: str, schema: str) -> str:
-    """Workload query1: join + filter + group/order by day — main analytical comparison."""
-    return f"""
-SELECT EVENT_TYPE, COUNT(*) AS order_count FROM {database}.{schema}.PERF_TEST_TABLE_INT WHERE TENANT_ID=1 AND EVENT_DATE >= '2026-01-01' AND EVENT_DATE < '2026-02-01' AND REGION IN ('us-east', 'us-west') GROUP BY EVENT_TYPE ORDER BY order_count DESC LIMIT 20;
-"""
-
-
-def query_sql_q2(database: str, schema: str) -> str:
-    """Workload query2: same join/filter as query1 but LIMIT 1 — minimal result set."""
-    return f"""
-SELECT d_date, 1 AS C
-FROM {database}.{schema}.CATALOG_SALES_IT AS cs
-INNER JOIN {database}.{schema}.DATE_DIM_IT AS d
-    ON cs.cs_sold_date_sk = d.d_date_sk
-WHERE cs_item_sk = ?
+SELECT EVENT_TS
+FROM {events}
+WHERE TENANT_ID = ? AND EVENT_DATE = ?
 LIMIT 1;
 """
 
 
-_WORKLOAD_SQL_BUILDERS = {
-    "query1": query_sql_q1,
-    "query2": query_sql_q2
+def _sql_query1(database: str, schema: str, table_name: str) -> str:
+    """Query 1: count events by event type for a fixed date range and region."""
+    events = _events_table_ref(database, schema, table_name)
+    return f"""
+SELECT 
+    EVENT_TYPE, COUNT(*) AS order_count 
+FROM 
+    {events} 
+WHERE 
+    TENANT_ID=1 
+AND 
+    EVENT_DATE >= '2026-01-01' AND EVENT_DATE < '2026-02-01' 
+AND 
+    REGION IN ('us-east', 'us-west') 
+GROUP BY 
+    EVENT_TYPE 
+ORDER BY 
+    order_count DESC 
+LIMIT 20;
+"""
+
+
+def _sql_query2(database: str, schema: str, table_name: str) -> str:
+    """Query 2: count events by event type for tenant, date range, and region."""
+    events = _events_table_ref(database, schema, table_name)
+    return f"""
+SELECT 
+    EVENT_TYPE, COUNT(*) AS order_count 
+FROM 
+    {events} 
+WHERE 
+    TENANT_ID = ? 
+AND 
+    EVENT_DATE >= ? AND EVENT_DATE < ?
+AND 
+    REGION IN (?) 
+GROUP BY 
+    EVENT_TYPE 
+ORDER BY 
+    order_count DESC 
+LIMIT 20;"""
+
+
+def _sql_query3(database: str, schema: str, table_name: str) -> str:
+    """Query 3: daily event counts by date for tenant, region, and event type."""
+    events = _events_table_ref(database, schema, table_name)
+    return f"""
+SELECT 
+    EVENT_DATE,
+    COUNT(*) AS EVENT_COUNT
+FROM 
+    {events} 
+WHERE 
+    TENANT_ID = ? 
+AND 
+    EVENT_DATE >= ? AND EVENT_DATE < ?
+AND 
+    REGION IN (?, ?, ?) 
+AND
+    EVENT_TYPE = ?
+GROUP BY 
+    EVENT_DATE
+ORDER BY 
+    EVENT_DATE DESC 
+LIMIT 50;
+"""
+
+
+def _bind_query0(
+    rng: random.Random, anchor: date | None = None
+) -> tuple[int, str]:
+    """Bind tenant_id and one event date."""
+    return _random_tenant_id(rng), _random_event_date(rng, anchor)
+
+
+def _bind_query2(
+    rng: random.Random, anchor: date | None = None
+) -> tuple[int, str, str, str]:
+    """Bind tenant_id, one calendar month, and one region."""
+    today = anchor or date.today()
+    month_start, month_end = rng.choice(
+        _recent_month_ranges(today, Q2_LOOKBACK_MONTHS)
+    )
+    return (
+        _random_tenant_id(rng),
+        month_start.isoformat(),
+        month_end.isoformat(),
+        rng.choice(Q2_REGIONS),
+    )
+
+
+def _bind_query3(
+    rng: random.Random, anchor: date | None = None
+) -> tuple[int, str, str, str, str, str, str]:
+    """Bind tenant_id, multi-month date range, three regions, and event type."""
+    today = anchor or date.today()
+    range_start, range_end = _random_multi_month_range(
+        rng,
+        today,
+        span_months_min=Q3_DATE_RANGE_MONTHS_MIN,
+        span_months_max=Q3_DATE_RANGE_MONTHS_MAX,
+        end_lookback_months=Q3_END_LOOKBACK_MONTHS,
+    )
+    return (
+        _random_tenant_id(rng),
+        range_start.isoformat(),
+        range_end.isoformat(),
+        *Q3_REGIONS,
+        rng.choice(Q3_EVENT_TYPES),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class Workload:
+    """One benchmark query shape: SQL builder plus optional bind generator."""
+
+    build_sql: Callable[[str, str, str], str]
+    random_binds: Callable[[random.Random], tuple[Any, ...]] | None = None
+
+    @property
+    def description(self) -> str:
+        return (self.build_sql.__doc__ or "").strip()
+
+
+WORKLOADS: dict[str, Workload] = {
+    "query0": Workload(build_sql=_sql_query0, random_binds=_bind_query0),
+    "query1": Workload(build_sql=_sql_query1),
+    "query2": Workload(build_sql=_sql_query2, random_binds=_bind_query2),
+    "query3": Workload(build_sql=_sql_query3, random_binds=_bind_query3),
 }
+WORKLOAD_NAMES: tuple[str, ...] = tuple(WORKLOADS)
 
 
-def query_sql(workload: str, database: str, schema: str) -> str:
-    """Return parameterized SQL for `workload` (`query1` | `query2`)."""
+def query_sql(workload: str, database: str, schema: str, warehouse: str) -> str:
+    """Return SQL for `workload`, using EVENTS or EVENTS_IT based on `warehouse`."""
     try:
-        fn = _WORKLOAD_SQL_BUILDERS[workload]
+        spec = WORKLOADS[workload]
     except KeyError as exc:
         raise ValueError(f"unknown workload: {workload!r}") from exc
-    return fn(database, schema)
+    table_name = workload_table_name(warehouse)
+    return spec.build_sql(database, schema, table_name)
 
 
 def workload_doc(workload: str) -> str:
-    """First line / docstring text for `workload` (for CLI / harness logging)."""
-    fn = _WORKLOAD_SQL_BUILDERS[workload]
-    return (fn.__doc__ or "").strip()
+    """Docstring text for `workload` (for CLI / harness logging)."""
+    return WORKLOADS[workload].description
 
 
-_COMPARISON_TABLE_NAMES: tuple[str, ...] = (
-    "PERF_TEST_TABLE_INT",
-)
+def workload_binds(workload: str, rng: random.Random) -> tuple[Any, ...] | None:
+    """Return bind parameters for one execution of `workload`, or None for literals."""
+    generator = WORKLOADS[workload].random_binds
+    return generator(rng) if generator is not None else None
 
-WAREHOUSE_CHOICES: tuple[str, ...] = (
-    DEFAULT_STANDARD_WAREHOUSE,
-    DEFAULT_INTERACTIVE_WAREHOUSE,
-)
 
 def is_interactive_warehouse(warehouse: str) -> bool:
     """True if `warehouse` is an interactive warehouse that needs cache-warm prep."""
@@ -253,6 +482,40 @@ def warehouse_display_name(warehouse: str, sizes: dict[str, str]) -> str:
     if size:
         return f"{warehouse} ({size})"
     return warehouse
+
+
+def _clamp_max_concurrency_level(level: int) -> int:
+    """Return a Snowflake-valid MAX_CONCURRENCY_LEVEL (1–32)."""
+    clamped = max(1, min(int(level), SNOWFLAKE_MAX_CONCURRENCY_LEVEL_LIMIT))
+    if clamped != int(level):
+        print(
+            f"[warehouse] warning: requested MAX_CONCURRENCY_LEVEL={level} "
+            f"is out of range; using {clamped}",
+            flush=True,
+        )
+    return clamped
+
+
+def ensure_warehouse_max_concurrency(
+    connection_name: str,
+    warehouse: str,
+    max_concurrency: int = DEFAULT_MAX_CONCURRENCY_LEVEL,
+) -> None:
+    """Set MAX_CONCURRENCY_LEVEL on `warehouse` before the benchmark run."""
+    level = _clamp_max_concurrency_level(max_concurrency)
+    conn = snowflake_connect(connection_name=connection_name)
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(f"ALTER WAREHOUSE {warehouse} SET MAX_CONCURRENCY_LEVEL = {level}")
+            print(
+                f"[warehouse] {warehouse} MAX_CONCURRENCY_LEVEL={level}",
+                flush=True,
+            )
+        finally:
+            cur.close()
+    finally:
+        conn.close()
 
 
 def _fetch_warehouse_status(cur: Any, warehouse: str) -> tuple[str | None, str | None]:
@@ -532,7 +795,7 @@ def print_comparison_table_row_counts(
     database: str,
     schema: str,
 ) -> None:
-    """Log combined information_schema row count for CATALOG_SALES_IT and DATE_DIM_IT."""
+    """Log combined information_schema row count for benchmark table(s)."""
     conn = snowflake_connect(connection_name=connection_name)
     try:
         cur = conn.cursor()
@@ -579,19 +842,18 @@ def parse_args() -> argparse.Namespace:
         "--schema",
         default=DEFAULT_SCHEMA,
         type=validate_schema_identifier,
-        help=f"Schema containing CATALOG_SALES_IT / DATE_DIM_IT (default: {DEFAULT_SCHEMA}).",
-    )
-    p.add_argument(
-        "--sample-size",
-        type=int,
-        default=DEFAULT_SAMPLE_SIZE,
-        help="Number of distinct cs_item_sk values to preload.",
+        help=f"Schema containing EVENTS / EVENTS_IT (default: {DEFAULT_SCHEMA}).",
     )
     p.add_argument(
         "--workload",
-        choices=("query1", "query2"),
+        choices=WORKLOAD_NAMES,
         default="query1",
-        help="Which query shape to run: query1 (aggregate by day; default), query2 (join+LIMIT 1).",
+        help=(
+            "Which query shape to run: query0 (single-row point lookup), "
+            "query1 (literal filters; default), "
+            "query2 (parameterized tenant_id, date range + region), "
+            "query3 (parameterized daily event counts sorted by date)."
+        ),
     )
     p.add_argument(
         "--seed",
@@ -621,36 +883,6 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
-def preload_items(
-    connection_name: str,
-    database: str,
-    schema: str,
-    sample_size: int,
-) -> list[int]:
-    """Load up to `sample_size` distinct `cs_item_sk` values; raises if none returned."""
-    print(f"[preload] Connecting (connection={connection_name})...", flush=True)
-    conn = snowflake_connect(connection_name=connection_name)
-    try:
-        cur = conn.cursor()
-        try:
-            print(
-                f"[preload] Fetching up to {sample_size} distinct cs_item_sk values...",
-                flush=True,
-            )
-            cur.execute(preload_sql(database, schema, sample_size))
-            rows = cur.fetchall()
-        finally:
-            cur.close()
-    finally:
-        conn.close()
-
-    items = [int(r[0]) for r in rows if r[0] is not None]
-    if not items:
-        raise RuntimeError("Preload returned 0 cs_item_sk values; aborting.")
-    print(f"[preload] Loaded {len(items)} item ids.", flush=True)
-    return items
-
-
 def open_workload_connection(
     connection_name: str,
     warehouse: str,
@@ -666,22 +898,37 @@ def open_workload_connection(
     cur = conn.cursor()
     cur.execute(f"USE WAREHOUSE {warehouse}")
     cur.execute("ALTER SESSION SET USE_CACHED_RESULT = FALSE")
-    qsql = query_sql(workload, database, schema)
+    qsql = query_sql(workload, database, schema, warehouse)
     return conn, cur, qsql
 
 
-def execute_workload_once(cur: Any, qsql: str, item_sk: int) -> tuple[float, int]:
-    """Run one bound workload query; return (latency_seconds, row_count). May raise."""
+def _fetch_query_results(
+    cur: Any,
+    qsql: str,
+    bind: tuple[Any, ...] | None,
+) -> list[tuple[Any, ...]]:
+    """Execute `qsql` and return all rows."""
+    if bind is None:
+        cur.execute(qsql)
+    else:
+        cur.execute(qsql, bind)
+    return cur.fetchall()
+
+
+def execute_workload_once(
+    cur: Any,
+    qsql: str,
+    bind: tuple[Any, ...] | None,
+) -> tuple[float, int]:
+    """Run one workload query; return (latency_seconds, row_count). May raise."""
     t0 = time.perf_counter()
-    cur.execute(qsql)
-    rows = cur.fetchall()
+    rows = _fetch_query_results(cur, qsql, bind)
     return time.perf_counter() - t0, len(rows)
 
 
-def warmup_workload_session(cur: Any, qsql: str, item_sk: int) -> int:
-    """Run one bound workload query to warm the session; excluded from benchmark timing."""
-    cur.execute(qsql)
-    return len(cur.fetchall())
+def warmup_workload_session(cur: Any, qsql: str, bind: tuple[Any, ...] | None) -> int:
+    """Run one workload query to warm the session; excluded from benchmark timing."""
+    return len(_fetch_query_results(cur, qsql, bind))
 
 
 def worker(
@@ -692,7 +939,6 @@ def worker(
     schema: str,
     warehouse: str,
     workload: str,
-    items: Sequence[int],
     rng_seed: int,
 ) -> tuple[list[float], int, list[int], int]:
     """Run `iterations` of `workload` SQL on one connection; return (latencies_s, errors, row_counts, queries_executed)."""
@@ -706,11 +952,12 @@ def worker(
         connection_name, warehouse, database, schema, workload
     )
     try:
-        warmup_workload_session(cur, qsql, rng.choice(items))
+        warmup_workload_session(cur, qsql, workload_binds(workload, rng))
         for _ in range(iterations):
-            item_sk = rng.choice(items)
             try:
-                latency, nrows = execute_workload_once(cur, qsql, item_sk)
+                latency, nrows = execute_workload_once(
+                    cur, qsql, workload_binds(workload, rng)
+                )
                 latencies.append(latency)
                 row_counts.append(nrows)
             except Exception as exc:  # noqa: BLE001
@@ -736,7 +983,6 @@ def run_phase(
     database: str,
     schema: str,
     workload: str,
-    items: Sequence[int],
     base_seed: int,
     warehouse_sizes: dict[str, str],
 ) -> dict:
@@ -765,8 +1011,7 @@ def run_phase(
                 schema=schema,
                 warehouse=warehouse,
                 workload=workload,
-                items=items,
-                # Per-user seed derived from base_seed so the same items are
+                # Per-user seed derived from base_seed so query2/query3 bind draws are
                 # picked across compare-mode phases for fairness.
                 rng_seed=base_seed + i,
             )
@@ -898,7 +1143,7 @@ def print_compare(
 
 
 def main() -> int:
-    """Entry point: parse args, preload, run phase(s), print results."""
+    """Entry point: parse args, run phase(s), print results."""
     args = parse_args()
 
     base_seed = resolve_base_seed(args.seed)
@@ -933,8 +1178,8 @@ def main() -> int:
             flush=True,
         )
 
-    items = [1,2,3,4,5,6,7,8,9,10] 
-    # items = preload_items(args.connection, args.database, args.schema, args.sample_size)
+    for wh in wh_names:
+        ensure_warehouse_max_concurrency(args.connection, wh)
 
     if args.compare:
         wh_a, wh_b = args.compare
@@ -951,7 +1196,6 @@ def main() -> int:
             database=args.database,
             schema=args.schema,
             workload=args.workload,
-            items=items,
             base_seed=base_seed,
             warehouse_sizes=warehouse_sizes,
         )
@@ -964,7 +1208,6 @@ def main() -> int:
             database=args.database,
             schema=args.schema,
             workload=args.workload,
-            items=items,
             base_seed=base_seed,
             warehouse_sizes=warehouse_sizes,
         )
@@ -983,7 +1226,6 @@ def main() -> int:
             database=args.database,
             schema=args.schema,
             workload=args.workload,
-            items=items,
             base_seed=base_seed,
             warehouse_sizes=warehouse_sizes,
         )

@@ -1,5 +1,5 @@
 -- Run the benchmark inside SPCS as a one-shot job service.
--- Prefer using spcs/scripts/run_benchmark.sh (envsubst over service-spec.yaml).
+-- Prefer using spcs/scripts/run-benchmark-spcs.sh or ./run-benchmark --spcs.
 -- Use this file when you want to launch a run manually from a SQL worksheet.
 
 USE DATABASE IW_PLAYGROUND;

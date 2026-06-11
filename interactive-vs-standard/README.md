@@ -9,31 +9,6 @@ interactive warehouse (`IW_WH`) by running a chosen a sample **workload**
 > **current CPU usage** on your machine (thread scheduling, connector overhead, etc.).
 > Run under similar conditions when comparing warehouses or repeating a run.
 
-## What it does
-
-1. Connects to Snowflake using a named connection from
-   `~/.snowflake/connections.toml` (default `PM`, externalbrowser SSO).
-   Connections use **qmark** parameter binding (`?` placeholders).
-2. Prints **`[init]`** (database, schema, workload, seed) and a short
-   **`[workload]`** description for the selected query shape.
-3. Logs combined row counts for `CATALOG_SALES_IT` and `DATE_DIM_IT` via
-   **`[tables]`**.
-4. Resolves warehouse sizes with `SHOW WAREHOUSES IN ACCOUNT` and logs them
-   under **`[warehouse]`**.
-5. Preloads up to `--sample-size` distinct `cs_item_sk` values from
-   `CATALOG_SALES_IT` joined to `DATE_DIM_IT` (year 1999) in your target
-   database/schema.
-6. Before an interactive warehouse run, **`[interactive]`** checks warehouse
-   state, resumes it if suspended, and (only after a resume) estimates cache
-   warm time from attached table sizes at ~300 MB/s.
-7. Spawns N threads. Each thread opens its own connection, sets the target
-   warehouse, disables result cache, runs one warmup query, then runs I timed
-   queries — each with a randomly chosen `cs_item_sk` from the preloaded pool.
-8. Prints latency stats (avg / min / p50 / p95 / p99 / max), throughput (q/s),
-   and average result rows per query.
-9. With `--compare`, runs two warehouses back-to-back (same RNG seed, workload,
-   and item pool for fairness) and prints a side-by-side delta table.
-
 ## Workloads (`--workload`)
 
 Both workloads join `CATALOG_SALES_IT` to `DATE_DIM_IT` and filter on a bound
