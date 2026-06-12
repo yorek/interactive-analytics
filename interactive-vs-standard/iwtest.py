@@ -503,6 +503,40 @@ def _server_stats_from_rows(rows: Sequence[tuple[Any, ...]]) -> list[ServerQuery
     return stats
 
 
+def _fetch_server_stats_by_warehouse(
+    cur: Any,
+    *,
+    warehouse: str,
+    tag_pattern: str,
+    result_limit: int,
+    service_user_name: str | None = None,
+) -> list[ServerQueryStats]:
+    """Load tagged workload queries scoped to one warehouse."""
+    spcs_where = ""
+    params: list[Any] = [warehouse, result_limit, tag_pattern]
+    if service_user_name is not None:
+        spcs_where = """
+  AND user_type = 'SNOWFLAKE_SERVICE'
+  AND user_name = ?"""
+        params.append(service_user_name)
+    sql = f"""
+{_SERVER_STATS_SELECT}
+FROM TABLE(
+    INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE(
+        WAREHOUSE_NAME => ?,
+        RESULT_LIMIT => ?
+    )
+)
+WHERE query_tag LIKE ?{spcs_where}
+  AND UPPER(warehouse_name) = UPPER(?)
+GROUP BY warehouse_name, session_test_id, query_number
+ORDER BY warehouse_name, query_number
+"""
+    params.append(warehouse)
+    cur.execute(sql, tuple(params))
+    return _server_stats_from_rows(cur.fetchall())
+
+
 def _fetch_server_stats_by_user(
     cur: Any,
     *,
@@ -592,6 +626,7 @@ def fetch_server_query_stats(
     connection_name: str,
     test_id: str,
     *,
+    warehouse: str | None = None,
     warehouses: Sequence[str] | None = None,
     settle_seconds: float = _QUERY_HISTORY_SETTLE_SECONDS,
     result_limit: int = _QUERY_HISTORY_RESULT_LIMIT,
@@ -605,6 +640,27 @@ def fetch_server_query_stats(
     try:
         cur = conn.cursor()
         try:
+            if warehouse is not None:
+                service_user_name: str | None = None
+                if _is_spcs_runtime():
+                    current_user = _snowflake_current_user(conn)
+                    service_user_name = _query_history_service_user_name()
+                    if service_user_name is None:
+                        service_user_name = current_user
+                    print(
+                        f"[history] SPCS lookup warehouse={warehouse!r} "
+                        f"service_user={service_user_name!r} "
+                        f"current_user={current_user!r} pattern={tag_pattern!r}",
+                        flush=True,
+                    )
+                return _fetch_server_stats_by_warehouse(
+                    cur,
+                    warehouse=warehouse,
+                    tag_pattern=tag_pattern,
+                    result_limit=result_limit,
+                    service_user_name=service_user_name,
+                )
+
             if _is_spcs_runtime():
                 current_user = _snowflake_current_user(conn)
                 service_user_name = _query_history_service_user_name()
@@ -645,6 +701,55 @@ def fetch_server_query_stats(
         conn.close()
 
 
+def _load_server_stats_for_warehouse(
+    connection_name: str,
+    test_id: str,
+    warehouse: str,
+    *,
+    warehouses: Sequence[str] | None = None,
+) -> list[ServerQueryStats]:
+    """Fetch QUERY_HISTORY for one completed benchmark phase."""
+    print(
+        f"[history] fetching server-side query stats from QUERY_HISTORY "
+        f"(warehouse={warehouse})...",
+        flush=True,
+    )
+    try:
+        stats = fetch_server_query_stats(
+            connection_name,
+            test_id,
+            warehouse=warehouse,
+            warehouses=warehouses,
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"[history] warning: could not load server-side stats for "
+            f"{warehouse}: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return []
+    if not stats:
+        print(
+            "[history] no tagged workload queries found in QUERY_HISTORY "
+            f"(warehouse={warehouse}, pattern {_QUERY_TAG_PREFIX}:{test_id}:*)",
+            flush=True,
+        )
+        if _is_spcs_runtime():
+            service_user = _query_history_service_user_name()
+            print(
+                "[history] SPCS hint: verify SNOWFLAKE_SERVICE_NAME matches "
+                f"query_history.user_name (env={service_user!r})",
+                flush=True,
+            )
+    else:
+        print(
+            f"[history] loaded {len(stats)} server stat row(s) for {warehouse}",
+            flush=True,
+        )
+    return stats
+
+
 def server_stats_for_result(
     server_stats: Sequence[ServerQueryStats],
     warehouse: str,
@@ -668,6 +773,31 @@ def _ms_to_seconds(ms: float) -> float:
     return ms / 1000.0
 
 
+def _server_query_span_seconds(server: ServerQueryStats) -> float | None:
+    """Seconds from first query start to last query end in QUERY_HISTORY."""
+    first, last = server.first_query_at, server.last_query_at
+    if first is None or last is None:
+        return None
+    try:
+        if hasattr(first, "timestamp") and hasattr(last, "timestamp"):
+            span = last.timestamp() - first.timestamp()
+        else:
+            span = (last - first).total_seconds()  # type: ignore[operator]
+    except (TypeError, ValueError, AttributeError):
+        return None
+    if span <= 0:
+        return None
+    return span
+
+
+def _server_throughput_qps(server: ServerQueryStats) -> float | None:
+    """Queries per second using QUERY_HISTORY first/last timestamps."""
+    span = _server_query_span_seconds(server)
+    if span is None or server.query_count <= 0:
+        return None
+    return server.query_count / span
+
+
 _TOTAL_METRICS: tuple[tuple[str, str, str], ...] = (
     ("avg total", "avg", "avg_total_elapsed_ms"),
     ("min total", "min", "min_total_ms"),
@@ -689,6 +819,12 @@ def _print_server_stats_block(server: ServerQueryStats | None) -> None:
         print("    (no matching tagged queries found)")
         return
     print(f"    query_count   : {server.query_count}")
+    span = _server_query_span_seconds(server)
+    if span is not None:
+        print(f"    wall seconds    : {span:.3f}")
+        qps = _server_throughput_qps(server)
+        if qps is not None:
+            print(f"    throughput      : {qps:.2f} q/s")
     for label, _, attr in _TOTAL_METRICS:
         _print_total_line(label, float(getattr(server, attr)))
     print(f"    first query   : {server.first_query_at}")
@@ -1501,6 +1637,30 @@ def print_compare(
             count_delta = f"{'n/a':>14}"
         print(f"{'query_count':<16} {count_a} {count_b} {count_delta}")
 
+        wa_srv = (
+            _server_query_span_seconds(sa_srv) if sa_srv is not None else None
+        )
+        wb_srv = (
+            _server_query_span_seconds(sb_srv) if sb_srv is not None else None
+        )
+        wall_a = f"{wa_srv:>32.3f}" if wa_srv is not None else f"{'n/a':>32}"
+        wall_b = f"{wb_srv:>32.3f}" if wb_srv is not None else f"{'n/a':>32}"
+        if wa_srv is not None and wb_srv is not None:
+            wall_delta = f"{wb_srv - wa_srv:>+14.3f}"
+        else:
+            wall_delta = f"{'n/a':>14}"
+        print(f"{'wall seconds':<16} {wall_a} {wall_b} {wall_delta}")
+
+        ta_srv = _server_throughput_qps(sa_srv) if sa_srv is not None else None
+        tb_srv = _server_throughput_qps(sb_srv) if sb_srv is not None else None
+        qps_a = f"{ta_srv:>32.2f}" if ta_srv is not None else f"{'n/a':>32}"
+        qps_b = f"{tb_srv:>32.2f}" if tb_srv is not None else f"{'n/a':>32}"
+        if ta_srv is not None and tb_srv is not None:
+            qps_delta = f"{tb_srv - ta_srv:>+14.2f}"
+        else:
+            qps_delta = f"{'n/a':>14}"
+        print(f"{'throughput':<16} {qps_a} {qps_b} {qps_delta}")
+
 
 def main() -> int:
     """Entry point: parse args, run phase(s), print results."""
@@ -1576,6 +1736,9 @@ def main() -> int:
             base_seed=base_seed,
             warehouse_sizes=warehouse_sizes,
         )
+        a_server_stats = _load_server_stats_for_warehouse(
+            args.connection, test_id, wh_a, warehouses=wh_names
+        )
         b = run_phase(
             warehouse=wh_b,
             users=args.users,
@@ -1588,6 +1751,10 @@ def main() -> int:
             base_seed=base_seed,
             warehouse_sizes=warehouse_sizes,
         )
+        b_server_stats = _load_server_stats_for_warehouse(
+            args.connection, test_id, wh_b, warehouses=wh_names
+        )
+        server_stats = [*a_server_stats, *b_server_stats]
     else:
         if is_interactive_warehouse(args.warehouse):
             ensure_interactive_warehouse_ready(
@@ -1605,34 +1772,9 @@ def main() -> int:
             base_seed=base_seed,
             warehouse_sizes=warehouse_sizes,
         )
-
-    print("[history] fetching server-side query stats from QUERY_HISTORY...", flush=True)
-    try:
-        server_stats = fetch_server_query_stats(
-            args.connection, test_id, warehouses=wh_names
+        server_stats = _load_server_stats_for_warehouse(
+            args.connection, test_id, args.warehouse, warehouses=wh_names
         )
-    except Exception as exc:  # noqa: BLE001
-        server_stats = []
-        print(
-            f"[history] warning: could not load server-side stats: {exc}",
-            file=sys.stderr,
-            flush=True,
-        )
-    if not server_stats:
-        print(
-            "[history] no tagged workload queries found in QUERY_HISTORY "
-            f"(pattern {_QUERY_TAG_PREFIX}:{test_id}:*)",
-            flush=True,
-        )
-        if _is_spcs_runtime():
-            service_user = _query_history_service_user_name()
-            print(
-                "[history] SPCS hint: verify SNOWFLAKE_SERVICE_NAME matches "
-                f"query_history.user_name (env={service_user!r})",
-                flush=True,
-            )
-    else:
-        print(f"[history] loaded {len(server_stats)} server stat row(s)", flush=True)
 
     if args.compare:
         print_single(
