@@ -74,7 +74,6 @@ The container reads benchmark options from `BENCH_*` env vars:
 | `BENCH_WORKLOAD`    | `query1`         | `--workload`         |
 | `BENCH_DATABASE`    | `IW_PLAYGROUND`  | `--database`         |
 | `BENCH_SCHEMA`      | `IW_TEST`        | `--schema`           |
-| `BENCH_SAMPLE_SIZE` | `5000`           | `--sample-size`      |
 | `BENCH_SEED`        | `42`             | `--seed`             |
 | `BENCH_WAREHOUSE`   | —                | `--warehouse`        |
 | `BENCH_COMPARE`     | `STD_WH,IW_WH` (when `BENCH_WAREHOUSE` is unset) | `--compare` |

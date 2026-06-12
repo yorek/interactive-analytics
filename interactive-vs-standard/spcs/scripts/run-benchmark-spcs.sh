@@ -4,7 +4,7 @@
 # Benchmark options are passed to the container as BENCH_* env vars (no image rebuild).
 # Set them via CLI flags (preferred), BENCH_* env vars, or project .env — later wins over earlier.
 #
-#   ./spcs/scripts/run-benchmark-spcs.sh --users 20 --iterations 100 --workload query1 --compare DM_STANDARD,DM_INTERACTIVE
+#   ./spcs/scripts/run-benchmark-spcs.sh --users 20 --iterations 100 --workload query1 --compare STD_WH,IW_WH
 #
 # Infra overrides (laptop-side only, not passed to the container):
 #   SF_CONNECTION  Snowflake connection name (default: PM)
@@ -28,7 +28,9 @@ Benchmark options (mirrors iwtest.py; executed inside SPCS):
   --compare WH1,WH2      Compare two warehouses (default from .env warehouses)
   -h, --help             Show this help
 
-Infra overrides (env vars only): SF_CONNECTION, POOL_NAME, SERVICE_NAME, IMAGE_PATH
+Infra overrides (env vars only):
+  SF_CONNECTION, POOL_NAME, SERVICE_NAME, IMAGE_PATH
+  BENCH_CPU_REQUEST, BENCH_MEMORY_REQUEST, BENCH_CPU_LIMIT, BENCH_MEMORY_LIMIT
 EOF
 }
 
@@ -67,12 +69,16 @@ IMAGE_PATH="${IMAGE_PATH:-/iw_playground/iw_test/iw_repo/iwbench:latest}"
 BENCH_USERS="${BENCH_USERS:-20}"
 BENCH_ITERATIONS="${BENCH_ITERATIONS:-100}"
 BENCH_WORKLOAD="${BENCH_WORKLOAD:-query1}"
-BENCH_DATABASE="${BENCH_DATABASE:-DMAURI_PLAYGROUND}"
-BENCH_SCHEMA="${BENCH_SCHEMA:-ZUTEST}"
+BENCH_DATABASE="${BENCH_DATABASE:-IW_PLAYGROUND}"
+BENCH_SCHEMA="${BENCH_SCHEMA:-IW_TEST}"
 BENCH_SEED="${BENCH_SEED:-42}"
-BENCH_STANDARD_WAREHOUSE="${BENCH_STANDARD_WAREHOUSE:-DM_STANDARD}"
-BENCH_INTERACTIVE_WAREHOUSE="${BENCH_INTERACTIVE_WAREHOUSE:-DM_INTERACTIVE}"
+BENCH_STANDARD_WAREHOUSE="${BENCH_STANDARD_WAREHOUSE:-STD_WH}"
+BENCH_INTERACTIVE_WAREHOUSE="${BENCH_INTERACTIVE_WAREHOUSE:-IW_WH}"
 BENCH_BOOTSTRAP_WAREHOUSE="${BENCH_BOOTSTRAP_WAREHOUSE:-${BENCH_STANDARD_WAREHOUSE}}"
+BENCH_CPU_REQUEST="${BENCH_CPU_REQUEST:-4000m}"
+BENCH_MEMORY_REQUEST="${BENCH_MEMORY_REQUEST:-4Gi}"
+BENCH_CPU_LIMIT="${BENCH_CPU_LIMIT:-${BENCH_CPU_REQUEST}}"
+BENCH_MEMORY_LIMIT="${BENCH_MEMORY_LIMIT:-${BENCH_MEMORY_REQUEST}}"
 
 if [[ -n "${BENCH_WAREHOUSE:-}" && -n "${BENCH_COMPARE:-}" ]]; then
   echo "[run] error: set BENCH_WAREHOUSE OR BENCH_COMPARE, not both" >&2
@@ -95,6 +101,10 @@ add_env BENCH_SEED        "${BENCH_SEED}"
 add_env BENCH_BOOTSTRAP_WAREHOUSE "${BENCH_BOOTSTRAP_WAREHOUSE}"
 add_env BENCH_STANDARD_WAREHOUSE   "${BENCH_STANDARD_WAREHOUSE}"
 add_env BENCH_INTERACTIVE_WAREHOUSE "${BENCH_INTERACTIVE_WAREHOUSE}"
+add_env BENCH_CPU_REQUEST     "${BENCH_CPU_REQUEST}"
+add_env BENCH_MEMORY_REQUEST  "${BENCH_MEMORY_REQUEST}"
+add_env BENCH_CPU_LIMIT       "${BENCH_CPU_LIMIT}"
+add_env BENCH_MEMORY_LIMIT    "${BENCH_MEMORY_LIMIT}"
 [[ -n "${BENCH_WAREHOUSE:-}" ]] && add_env BENCH_WAREHOUSE "${BENCH_WAREHOUSE}"
 [[ -n "${BENCH_COMPARE:-}"   ]] && add_env BENCH_COMPARE   "${BENCH_COMPARE}"
 
@@ -106,11 +116,11 @@ spec:
       env:
 ${env_block}      resources:
         requests:
-          memory: 2Gi
-          cpu: 2000m
+          memory: ${BENCH_MEMORY_REQUEST}
+          cpu: ${BENCH_CPU_REQUEST}
         limits:
-          memory: 4Gi
-          cpu: 4000m
+          memory: ${BENCH_MEMORY_LIMIT}
+          cpu: ${BENCH_CPU_LIMIT}
   platformMonitor:
     metricConfig:
       groups:
@@ -214,6 +224,7 @@ log_remote_benchmark() {
     echo "[run] mode: single warehouse ${BENCH_WAREHOUSE}"
   fi
   echo "[run] params: users=${BENCH_USERS} iterations=${BENCH_ITERATIONS} workload=${BENCH_WORKLOAD} database=${BENCH_DATABASE} schema=${BENCH_SCHEMA} seed=${BENCH_SEED}"
+  echo "[run] resources: cpu_request=${BENCH_CPU_REQUEST} memory_request=${BENCH_MEMORY_REQUEST} cpu_limit=${BENCH_CPU_LIMIT} memory_limit=${BENCH_MEMORY_LIMIT}"
 }
 
 verify_spcs_setup

@@ -1,6 +1,6 @@
 -- Run the benchmark inside SPCS as a one-shot job service.
--- Prefer using spcs/scripts/run-benchmark-spcs.sh or ./run-benchmark --spcs.
--- Use this file when you want to launch a run manually from a SQL worksheet.
+-- Prefer spcs/scripts/run-benchmark-spcs.sh or ./run-benchmark --spcs (injects BENCH_* from CLI/.env).
+-- Use this file only for manual runs from a SQL worksheet; env defaults mirror .env / run-benchmark-spcs.sh.
 
 USE DATABASE IW_PLAYGROUND;
 USE SCHEMA IW_TEST;
@@ -24,13 +24,12 @@ spec:
         BENCH_WORKLOAD: "query1"
         BENCH_DATABASE: "IW_PLAYGROUND"
         BENCH_SCHEMA: "IW_TEST"
-        BENCH_SAMPLE_SIZE: "5000"
         BENCH_SEED: "42"
         BENCH_BOOTSTRAP_WAREHOUSE: "STD_WH"
       resources:
         requests:
           memory: 2Gi
-          cpu: 1000m
+          cpu: 2000m
         limits:
           memory: 4Gi
           cpu: 4000m

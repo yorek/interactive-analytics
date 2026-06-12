@@ -109,7 +109,6 @@ uv run iwtest.py --users 20 --iterations 10 --compare STD_WH,IW_WH --seed random
 | `--connection`   | `PM`                 | Snowflake connection name |
 | `--database`     | `IW_PLAYGROUND`      | database containing TPC-DS tables |
 | `--schema`       | `IW_TEST`            | schema with `CATALOG_SALES_IT` / `DATE_DIM_IT` |
-| `--sample-size`  | 5000                 | distinct `cs_item_sk` values to preload |
 | `--seed`         | `42`                 | RNG seed; use `random` for a different seed each run |
 
 `--warehouse` and `--compare` are mutually exclusive; one is required.

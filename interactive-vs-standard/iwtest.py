@@ -6,8 +6,10 @@ query0 is a single-row point lookup by tenant and event date; query1 uses litera
 filters; query2 binds a random TENANT_ID (1–10000), EVENT_DATE
 range (within the last three calendar months), and REGION on every query; query3
 binds tenant, date range, regions, and event type for daily counts sorted by date.
-Reports latency stats and
-average result rows per query to the console.
+Each run gets a YYYYMMDDHHMMSS test id; benchmark workload queries are tagged
+``IWTEST:<test_id>:<query_number>`` in Snowflake. After the run, server-side
+timings are loaded from ``QUERY_HISTORY_BY_USER`` and printed next to client
+end-to-end latency stats.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Sequence
 import snowflake.connector
@@ -77,6 +79,10 @@ _SAFE_DB_IDENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*$")
 
 # XS interactive warehouse cache warm rate per Snowflake docs (~300–350 MB/s).
 _CACHE_WARM_BYTES_PER_SEC = 300 * 1024 * 1024
+
+_QUERY_TAG_PREFIX = "IWTEST"
+_QUERY_HISTORY_RESULT_LIMIT = 10_000
+_QUERY_HISTORY_SETTLE_SECONDS = 2.0
 
 _WORKLOAD_BASE_TABLE = "EVENTS"
 _INTERACTIVE_TABLE_SUFFIX = "_IT"
@@ -397,6 +403,296 @@ def workload_binds(workload: str, rng: random.Random) -> tuple[Any, ...] | None:
     """Return bind parameters for one execution of `workload`, or None for literals."""
     generator = WORKLOADS[workload].random_binds
     return generator(rng) if generator is not None else None
+
+
+def new_test_id(now: datetime | None = None) -> str:
+    """Return a run identifier in YYYYMMDDHHMMSS format."""
+    return (now or datetime.now()).strftime("%Y%m%d%H%M%S")
+
+
+def workload_query_tag(test_id: str, workload: str) -> str:
+    """Snowflake QUERY_TAG for benchmark workload queries (IWTEST:<test_id>:<n>)."""
+    query_number = workload.removeprefix("query")
+    return f"{_QUERY_TAG_PREFIX}:{test_id}:{query_number}"
+
+
+def workload_query_number(workload: str) -> str:
+    """Numeric suffix from a workload name (e.g. ``query2`` -> ``2``)."""
+    return workload.removeprefix("query")
+
+
+@dataclass(frozen=True, slots=True)
+class ServerQueryStats:
+    """Aggregated Snowflake QUERY_HISTORY timings for one warehouse and workload."""
+
+    warehouse_name: str
+    test_id: str
+    query_number: str
+    query_count: int
+    avg_total_elapsed_ms: float
+    min_total_ms: float
+    max_total_ms: float
+    p50_total_ms: float
+    p95_total_ms: float
+    p99_total_ms: float
+    first_query_at: Any
+    last_query_at: Any
+
+
+def _is_spcs_runtime() -> bool:
+    """True when running inside a Snowpark Container Services job/container."""
+    return _SPCS_TOKEN_PATH.exists()
+
+
+def _snowflake_current_user(conn: Any) -> str:
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT CURRENT_USER()")
+        row = cur.fetchone()
+        if not row or row[0] is None:
+            raise RuntimeError("CURRENT_USER() returned no value")
+        return str(row[0])
+    finally:
+        cur.close()
+
+
+def _query_history_service_user_name() -> str | None:
+    """SPCS service user name (same as SNOWFLAKE_SERVICE_NAME / query_history.user_name)."""
+    service_name = os.environ.get("SNOWFLAKE_SERVICE_NAME", "").strip()
+    return service_name or None
+
+
+_SERVER_STATS_SELECT = """
+SELECT
+    warehouse_name,
+    SPLIT_PART(query_tag, ':', 2) AS session_test_id,
+    SPLIT_PART(query_tag, ':', 3) AS query_number,
+    COUNT(*) AS query_count,
+    AVG(total_elapsed_time)::NUMBER(10, 2) AS avg_total_elapsed_ms,
+    MIN(total_elapsed_time)::NUMBER(10, 2) AS min_total_ms,
+    MAX(total_elapsed_time)::NUMBER(10, 2) AS max_total_ms,
+    MEDIAN(total_elapsed_time)::NUMBER(10, 2) AS p50_total_ms,
+    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY total_elapsed_time)::NUMBER(10, 2)
+        AS p95_total_ms,
+    PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY total_elapsed_time)::NUMBER(10, 2)
+        AS p99_total_ms,
+    MIN(start_time) AS first_query_at,
+    MAX(end_time) AS last_query_at
+"""
+
+
+def _server_stats_from_rows(rows: Sequence[tuple[Any, ...]]) -> list[ServerQueryStats]:
+    stats: list[ServerQueryStats] = []
+    for row in rows:
+        stats.append(
+            ServerQueryStats(
+                warehouse_name=str(row[0]),
+                test_id=str(row[1]),
+                query_number=str(row[2]),
+                query_count=int(row[3]),
+                avg_total_elapsed_ms=float(row[4]),
+                min_total_ms=float(row[5]),
+                max_total_ms=float(row[6]),
+                p50_total_ms=float(row[7]),
+                p95_total_ms=float(row[8]),
+                p99_total_ms=float(row[9]),
+                first_query_at=row[10],
+                last_query_at=row[11],
+            )
+        )
+    return stats
+
+
+def _fetch_server_stats_by_user(
+    cur: Any,
+    *,
+    user_name: str,
+    tag_pattern: str,
+    result_limit: int,
+) -> list[ServerQueryStats]:
+    sql = f"""
+{_SERVER_STATS_SELECT}
+FROM TABLE(
+    INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER(
+        USER_NAME => ?,
+        RESULT_LIMIT => ?
+    )
+)
+WHERE query_tag LIKE ?
+GROUP BY warehouse_name, session_test_id, query_number
+ORDER BY warehouse_name, query_number
+"""
+    cur.execute(sql, (user_name, result_limit, tag_pattern))
+    return _server_stats_from_rows(cur.fetchall())
+
+
+def _fetch_server_stats_spcs(
+    cur: Any,
+    *,
+    service_user_name: str,
+    tag_pattern: str,
+    result_limit: int,
+    warehouses: Sequence[str],
+) -> list[ServerQueryStats]:
+    """Load tagged workload queries for an SPCS service user.
+
+    SPCS runs SQL as a SNOWFLAKE_SERVICE user whose ``user_name`` is the service
+    name (``SNOWFLAKE_SERVICE_NAME``), not necessarily ``CURRENT_USER()``.
+    """
+    sql = f"""
+{_SERVER_STATS_SELECT}
+FROM TABLE(
+    INFORMATION_SCHEMA.QUERY_HISTORY(
+        RESULT_LIMIT => ?
+    )
+)
+WHERE query_tag LIKE ?
+  AND user_type = 'SNOWFLAKE_SERVICE'
+  AND user_name = ?
+GROUP BY warehouse_name, session_test_id, query_number
+ORDER BY warehouse_name, query_number
+"""
+    cur.execute(sql, (result_limit, tag_pattern, service_user_name))
+    stats = _server_stats_from_rows(cur.fetchall())
+    if stats or not warehouses:
+        return stats
+
+    # Fallback: service owner role often has OPERATE (not MONITOR) on benchmark
+    # warehouses; BY_WAREHOUSE can still expose tagged service-user queries.
+    by_wh_sql = f"""
+{_SERVER_STATS_SELECT}
+FROM TABLE(
+    INFORMATION_SCHEMA.QUERY_HISTORY_BY_WAREHOUSE(
+        WAREHOUSE_NAME => ?,
+        RESULT_LIMIT => ?
+    )
+)
+WHERE query_tag LIKE ?
+  AND user_type = 'SNOWFLAKE_SERVICE'
+  AND user_name = ?
+GROUP BY warehouse_name, session_test_id, query_number
+ORDER BY warehouse_name, query_number
+"""
+    merged: dict[tuple[str, str, str], ServerQueryStats] = {}
+    for warehouse in warehouses:
+        cur.execute(
+            by_wh_sql,
+            (warehouse, result_limit, tag_pattern, service_user_name),
+        )
+        for row in _server_stats_from_rows(cur.fetchall()):
+            key = (row.warehouse_name.upper(), row.test_id, row.query_number)
+            merged[key] = row
+    return sorted(
+        merged.values(),
+        key=lambda row: (row.warehouse_name, row.query_number),
+    )
+
+
+def fetch_server_query_stats(
+    connection_name: str,
+    test_id: str,
+    *,
+    warehouses: Sequence[str] | None = None,
+    settle_seconds: float = _QUERY_HISTORY_SETTLE_SECONDS,
+    result_limit: int = _QUERY_HISTORY_RESULT_LIMIT,
+) -> list[ServerQueryStats]:
+    """Load server-side timings from QUERY_HISTORY for this run's tagged workload queries."""
+    if settle_seconds > 0:
+        time.sleep(settle_seconds)
+
+    tag_pattern = f"{_QUERY_TAG_PREFIX}:{test_id}:%"
+    conn = snowflake_connect(connection_name=connection_name)
+    try:
+        cur = conn.cursor()
+        try:
+            if _is_spcs_runtime():
+                current_user = _snowflake_current_user(conn)
+                service_user_name = _query_history_service_user_name()
+                if service_user_name is None:
+                    service_user_name = current_user
+                print(
+                    f"[history] SPCS lookup service_user={service_user_name!r} "
+                    f"current_user={current_user!r} pattern={tag_pattern!r}",
+                    flush=True,
+                )
+                if (
+                    service_user_name != current_user
+                    and _query_history_service_user_name() is not None
+                ):
+                    print(
+                        "[history] note: SPCS benchmark queries are recorded under "
+                        "SNOWFLAKE_SERVICE_NAME (service user), not CURRENT_USER()",
+                        flush=True,
+                    )
+                return _fetch_server_stats_spcs(
+                    cur,
+                    service_user_name=service_user_name,
+                    tag_pattern=tag_pattern,
+                    result_limit=result_limit,
+                    warehouses=tuple(warehouses or ()),
+                )
+
+            user_name = _snowflake_current_user(conn)
+            return _fetch_server_stats_by_user(
+                cur,
+                user_name=user_name,
+                tag_pattern=tag_pattern,
+                result_limit=result_limit,
+            )
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+
+
+def server_stats_for_result(
+    server_stats: Sequence[ServerQueryStats],
+    warehouse: str,
+    test_id: str,
+    workload: str,
+) -> ServerQueryStats | None:
+    """Return server stats row matching one benchmark result, if present in history."""
+    wh = warehouse.upper()
+    query_number = workload_query_number(workload)
+    for row in server_stats:
+        if (
+            row.warehouse_name.upper() == wh
+            and row.test_id == test_id
+            and row.query_number == query_number
+        ):
+            return row
+    return None
+
+
+def _ms_to_seconds(ms: float) -> float:
+    return ms / 1000.0
+
+
+_TOTAL_METRICS: tuple[tuple[str, str, str], ...] = (
+    ("avg total", "avg", "avg_total_elapsed_ms"),
+    ("min total", "min", "min_total_ms"),
+    ("p50 total", "p50", "p50_total_ms"),
+    ("p95 total", "p95", "p95_total_ms"),
+    ("p99 total", "p99", "p99_total_ms"),
+    ("max total", "max", "max_total_ms"),
+)
+
+
+def _print_total_line(label: str, ms: float) -> None:
+    print(f"    {label:<14}: {ms:.2f} ms ({_ms_to_seconds(ms):.3f} s)")
+
+
+def _print_server_stats_block(server: ServerQueryStats | None) -> None:
+    """Print Snowflake QUERY_HISTORY aggregates for one warehouse result."""
+    print("  Server (Snowflake QUERY_HISTORY, total_elapsed_time)")
+    if server is None:
+        print("    (no matching tagged queries found)")
+        return
+    print(f"    query_count   : {server.query_count}")
+    for label, _, attr in _TOTAL_METRICS:
+        _print_total_line(label, float(getattr(server, attr)))
+    print(f"    first query   : {server.first_query_at}")
+    print(f"    last query    : {server.last_query_at}")
 
 
 def is_interactive_warehouse(warehouse: str) -> bool:
@@ -906,12 +1202,16 @@ def _fetch_query_results(
     cur: Any,
     qsql: str,
     bind: tuple[Any, ...] | None,
+    query_tag: str | None = None,
 ) -> list[tuple[Any, ...]]:
     """Execute `qsql` and return all rows."""
+    execute_kwargs: dict[str, Any] = {}
+    if query_tag is not None:
+        execute_kwargs["_statement_params"] = {"QUERY_TAG": query_tag}
     if bind is None:
-        cur.execute(qsql)
+        cur.execute(qsql, **execute_kwargs)
     else:
-        cur.execute(qsql, bind)
+        cur.execute(qsql, bind, **execute_kwargs)
     return cur.fetchall()
 
 
@@ -919,15 +1219,20 @@ def execute_workload_once(
     cur: Any,
     qsql: str,
     bind: tuple[Any, ...] | None,
+    query_tag: str,
 ) -> tuple[float, int]:
     """Run one workload query; return (latency_seconds, row_count). May raise."""
     t0 = time.perf_counter()
-    rows = _fetch_query_results(cur, qsql, bind)
+    rows = _fetch_query_results(cur, qsql, bind, query_tag)
     return time.perf_counter() - t0, len(rows)
 
 
-def warmup_workload_session(cur: Any, qsql: str, bind: tuple[Any, ...] | None) -> int:
-    """Run one workload query to warm the session; excluded from benchmark timing."""
+def warmup_workload_session(
+    cur: Any,
+    qsql: str,
+    bind: tuple[Any, ...] | None,
+) -> int:
+    """Run one untagged workload query to warm the session; excluded from benchmark timing."""
     return len(_fetch_query_results(cur, qsql, bind))
 
 
@@ -939,10 +1244,12 @@ def worker(
     schema: str,
     warehouse: str,
     workload: str,
+    test_id: str,
     rng_seed: int,
 ) -> tuple[list[float], int, list[int], int]:
     """Run `iterations` of `workload` SQL on one connection; return (latencies_s, errors, row_counts, queries_executed)."""
     rng = random.Random(rng_seed)
+    query_tag = workload_query_tag(test_id, workload)
     latencies: list[float] = []
     row_counts: list[int] = []
     errors = 0
@@ -952,11 +1259,12 @@ def worker(
         connection_name, warehouse, database, schema, workload
     )
     try:
+        # Warmup is untagged so QUERY_HISTORY counts match timed benchmark queries.
         warmup_workload_session(cur, qsql, workload_binds(workload, rng))
         for _ in range(iterations):
             try:
                 latency, nrows = execute_workload_once(
-                    cur, qsql, workload_binds(workload, rng)
+                    cur, qsql, workload_binds(workload, rng), query_tag
                 )
                 latencies.append(latency)
                 row_counts.append(nrows)
@@ -983,13 +1291,16 @@ def run_phase(
     database: str,
     schema: str,
     workload: str,
+    test_id: str,
     base_seed: int,
     warehouse_sizes: dict[str, str],
 ) -> dict:
     """Run all worker threads for one warehouse; return metrics including `latencies` and `row_counts`."""
     wh_line = warehouse_display_name(warehouse, warehouse_sizes)
+    query_tag = workload_query_tag(test_id, workload)
     print(
-        f"\n[run] warehouse={wh_line} workload={workload} users={users} iterations={iterations}"
+        f"[run] warehouse={wh_line} workload={workload} test_id={test_id}"
+        f" query_tag={query_tag} users={users} iterations={iterations}"
         f" total_queries={users * iterations}",
         flush=True,
     )
@@ -1011,6 +1322,7 @@ def run_phase(
                 schema=schema,
                 warehouse=warehouse,
                 workload=workload,
+                test_id=test_id,
                 # Per-user seed derived from base_seed so query2/query3 bind draws are
                 # picked across compare-mode phases for fairness.
                 rng_seed=base_seed + i,
@@ -1067,50 +1379,63 @@ def summarize(latencies: Sequence[float]) -> dict[str, float]:
     }
 
 
-def print_single(result: dict, warehouse_sizes: dict[str, str]) -> None:
-    """Print latency summary for one `run_phase` result dict."""
+def print_single(
+    result: dict,
+    warehouse_sizes: dict[str, str],
+    *,
+    test_id: str,
+    workload: str,
+    server_stats: Sequence[ServerQueryStats],
+) -> None:
+    """Print client and server latency summary for one `run_phase` result dict."""
     stats = summarize(result["latencies"])
+    server = server_stats_for_result(
+        server_stats, result["warehouse"], test_id, workload
+    )
     print()
     title = warehouse_display_name(result["warehouse"], warehouse_sizes)
     print(f"=== Result: {title} ===")
-    print(f"  queries executed: {result['queries_executed']}")
+    print("  Client (end-to-end, total_elapsed_time)")
+    print(f"    queries executed: {result['queries_executed']}")
     rc = result["row_counts"]
     if rc:
-        print(f"  avg rows/query: {statistics.fmean(rc):.2f}")
+        print(f"    avg rows/query  : {statistics.fmean(rc):.2f}")
     else:
-        print("  avg rows/query: n/a")
-    print(f"  errors        : {result['errors']}")
-    print(f"  wall seconds  : {result['wall_seconds']:.3f}")
+        print("    avg rows/query  : n/a")
+    print(f"    errors          : {result['errors']}")
+    print(f"    wall seconds    : {result['wall_seconds']:.3f}")
     if result["wall_seconds"] > 0:
         qps = len(result["latencies"]) / result["wall_seconds"]
-        print(f"  throughput    : {qps:.2f} q/s")
-    print(f"  avg latency   : {stats['avg']:.3f} s")
-    print(f"  min latency   : {stats['min']:.3f} s")
-    print(f"  p50 latency   : {stats['p50']:.3f} s")
-    print(f"  p95 latency   : {stats['p95']:.3f} s")
-    print(f"  p99 latency   : {stats['p99']:.3f} s")
-    print(f"  max latency   : {stats['max']:.3f} s")
+        print(f"    throughput      : {qps:.2f} q/s")
+    for label, client_key, _ in _TOTAL_METRICS:
+        _print_total_line(label, stats[client_key] * 1000.0)
+    _print_server_stats_block(server)
 
 
 def print_compare(
-    a: dict, b: dict, warehouse_sizes: dict[str, str],
+    a: dict,
+    b: dict,
+    warehouse_sizes: dict[str, str],
+    *,
+    test_id: str,
+    workload: str,
+    server_stats: Sequence[ServerQueryStats],
 ) -> None:
     """Print side-by-side stats for two `run_phase` results (e.g. standard vs interactive)."""
     sa = summarize(a["latencies"])
     sb = summarize(b["latencies"])
-    metrics = ["avg", "p50", "p95", "p99", "min", "max"]
     name_a = warehouse_display_name(a["warehouse"], warehouse_sizes)
     name_b = warehouse_display_name(b["warehouse"], warehouse_sizes)
 
     print()
-    print("=== Comparison ===")
-    header = f"{'metric (s)':<12} {name_a:>32} {name_b:>32} {'delta (b-a)':>14}"
+    print("=== Client comparison (end-to-end, ms) ===")
+    header = f"{'metric':<16} {name_a:>32} {name_b:>32} {'delta (b-a)':>14}"
     print(header)
     print("-" * len(header))
-    for m in metrics:
-        va = sa[m]
-        vb = sb[m]
-        print(f"{m:<12} {va:>32.3f} {vb:>32.3f} {vb - va:>+14.3f}")
+    for label, client_key, _ in _TOTAL_METRICS:
+        va = sa[client_key] * 1000.0
+        vb = sb[client_key] * 1000.0
+        print(f"{label:<16} {va:>32.2f} {vb:>32.2f} {vb - va:>+14.2f}")
     wa, wb = a["wall_seconds"], b["wall_seconds"]
     ta = len(a["latencies"]) / wa if wa > 0 else None
     tb = len(b["latencies"]) / wb if wb > 0 else None
@@ -1141,14 +1466,54 @@ def print_compare(
     print(f"errors        {a['errors']:>32} {b['errors']:>32}")
     print(f"wall seconds  {a['wall_seconds']:>32.3f} {b['wall_seconds']:>32.3f}")
 
+    sa_srv = server_stats_for_result(server_stats, a["warehouse"], test_id, workload)
+    sb_srv = server_stats_for_result(server_stats, b["warehouse"], test_id, workload)
+    if sa_srv is not None or sb_srv is not None:
+        print()
+        print("=== Server comparison (Snowflake QUERY_HISTORY, ms) ===")
+        srv_header = f"{'metric':<16} {name_a:>32} {name_b:>32} {'delta (b-a)':>14}"
+        print(srv_header)
+        print("-" * len(srv_header))
+
+        def srv_cell(row: ServerQueryStats | None, attr: str) -> float | None:
+            return getattr(row, attr) if row is not None else None
+
+        def srv_line(label: str, attr: str) -> None:
+            va = srv_cell(sa_srv, attr)
+            vb = srv_cell(sb_srv, attr)
+            ca = f"{va:>32.2f}" if va is not None else f"{'n/a':>32}"
+            cb = f"{vb:>32.2f}" if vb is not None else f"{'n/a':>32}"
+            if va is not None and vb is not None:
+                dcell = f"{vb - va:>+14.2f}"
+            else:
+                dcell = f"{'n/a':>14}"
+            print(f"{label:<16} {ca} {cb} {dcell}")
+
+        for label, _, attr in _TOTAL_METRICS:
+            srv_line(label, attr)
+        ca = sa_srv.query_count if sa_srv is not None else None
+        cb = sb_srv.query_count if sb_srv is not None else None
+        count_a = f"{ca:>32}" if ca is not None else f"{'n/a':>32}"
+        count_b = f"{cb:>32}" if cb is not None else f"{'n/a':>32}"
+        if ca is not None and cb is not None:
+            count_delta = f"{cb - ca:>+14}"
+        else:
+            count_delta = f"{'n/a':>14}"
+        print(f"{'query_count':<16} {count_a} {count_b} {count_delta}")
+
 
 def main() -> int:
     """Entry point: parse args, run phase(s), print results."""
     args = parse_args()
 
+    test_id = new_test_id()
     base_seed = resolve_base_seed(args.seed)
     print(
         "[init] END-TO-END test: timings include network latency and local CPU load.",
+        flush=True,
+    )
+    print(
+        f"[init] test_id={test_id} query_tag={workload_query_tag(test_id, args.workload)}",
         flush=True,
     )
     print(
@@ -1156,6 +1521,17 @@ def main() -> int:
         f"base_seed={base_seed}",
         flush=True,
     )
+    if _is_spcs_runtime():
+        cpu_request = _env_str("BENCH_CPU_REQUEST", "4000m")
+        memory_request = _env_str("BENCH_MEMORY_REQUEST", "4Gi")
+        cpu_limit = os.environ.get("BENCH_CPU_LIMIT", cpu_request)
+        memory_limit = os.environ.get("BENCH_MEMORY_LIMIT", memory_request)
+        print(
+            f"[init] spcs resources: cpu_request={cpu_request} "
+            f"memory_request={memory_request} cpu_limit={cpu_limit} "
+            f"memory_limit={memory_limit}",
+            flush=True,
+        )
     wl_doc = workload_doc(args.workload)
     if wl_doc:
         print(f"[workload] {args.workload} : {wl_doc}", flush=True)
@@ -1196,10 +1572,10 @@ def main() -> int:
             database=args.database,
             schema=args.schema,
             workload=args.workload,
+            test_id=test_id,
             base_seed=base_seed,
             warehouse_sizes=warehouse_sizes,
         )
-        print_single(a, warehouse_sizes)
         b = run_phase(
             warehouse=wh_b,
             users=args.users,
@@ -1208,11 +1584,10 @@ def main() -> int:
             database=args.database,
             schema=args.schema,
             workload=args.workload,
+            test_id=test_id,
             base_seed=base_seed,
             warehouse_sizes=warehouse_sizes,
         )
-        print_single(b, warehouse_sizes)
-        print_compare(a, b, warehouse_sizes)
     else:
         if is_interactive_warehouse(args.warehouse):
             ensure_interactive_warehouse_ready(
@@ -1226,10 +1601,70 @@ def main() -> int:
             database=args.database,
             schema=args.schema,
             workload=args.workload,
+            test_id=test_id,
             base_seed=base_seed,
             warehouse_sizes=warehouse_sizes,
         )
-        print_single(result, warehouse_sizes)
+
+    print("[history] fetching server-side query stats from QUERY_HISTORY...", flush=True)
+    try:
+        server_stats = fetch_server_query_stats(
+            args.connection, test_id, warehouses=wh_names
+        )
+    except Exception as exc:  # noqa: BLE001
+        server_stats = []
+        print(
+            f"[history] warning: could not load server-side stats: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+    if not server_stats:
+        print(
+            "[history] no tagged workload queries found in QUERY_HISTORY "
+            f"(pattern {_QUERY_TAG_PREFIX}:{test_id}:*)",
+            flush=True,
+        )
+        if _is_spcs_runtime():
+            service_user = _query_history_service_user_name()
+            print(
+                "[history] SPCS hint: verify SNOWFLAKE_SERVICE_NAME matches "
+                f"query_history.user_name (env={service_user!r})",
+                flush=True,
+            )
+    else:
+        print(f"[history] loaded {len(server_stats)} server stat row(s)", flush=True)
+
+    if args.compare:
+        print_single(
+            a,
+            warehouse_sizes,
+            test_id=test_id,
+            workload=args.workload,
+            server_stats=server_stats,
+        )
+        print_single(
+            b,
+            warehouse_sizes,
+            test_id=test_id,
+            workload=args.workload,
+            server_stats=server_stats,
+        )
+        print_compare(
+            a,
+            b,
+            warehouse_sizes,
+            test_id=test_id,
+            workload=args.workload,
+            server_stats=server_stats,
+        )
+    else:
+        print_single(
+            result,
+            warehouse_sizes,
+            test_id=test_id,
+            workload=args.workload,
+            server_stats=server_stats,
+        )
 
     return 0
 

@@ -15,7 +15,6 @@ spec:
         BENCH_WORKLOAD: "query1"
         BENCH_DATABASE: "IW_PLAYGROUND"
         BENCH_SCHEMA: "IW_TEST"
-        BENCH_SAMPLE_SIZE: "5000"
         BENCH_SEED: "42"
         # Bootstrap warehouse for OAuth helper queries (per-thread USE WAREHOUSE still applies).
         BENCH_BOOTSTRAP_WAREHOUSE: "STD_WH"

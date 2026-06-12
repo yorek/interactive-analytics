@@ -5,10 +5,15 @@ set -euo pipefail
 
 cd /app
 
+: "${BENCH_CPU_REQUEST:=4000m}"
+: "${BENCH_MEMORY_REQUEST:=4Gi}"
+: "${BENCH_CPU_LIMIT:=${BENCH_CPU_REQUEST}}"
+: "${BENCH_MEMORY_LIMIT:=${BENCH_MEMORY_REQUEST}}"
+
 # Bootstrap warehouse for OAuth-based SPCS connections (no default in connections.toml).
 # Per-thread benchmark code issues its own USE WAREHOUSE; this only covers helper
 # queries (row counts, SHOW WAREHOUSES, preload, cache-warm sizing, etc.).
-: "${BENCH_BOOTSTRAP_WAREHOUSE:=DM_STANDARD}"
+: "${BENCH_BOOTSTRAP_WAREHOUSE:=STD_WH}"
 export SNOWFLAKE_WAREHOUSE="${SNOWFLAKE_WAREHOUSE:-${BENCH_BOOTSTRAP_WAREHOUSE}}"
 export SNOWFLAKE_DATABASE="${SNOWFLAKE_DATABASE:-${BENCH_DATABASE:-IW_PLAYGROUND}}"
 export SNOWFLAKE_SCHEMA="${SNOWFLAKE_SCHEMA:-${BENCH_SCHEMA:-IW_TEST}}"
@@ -34,5 +39,6 @@ fi
 # --connection is ignored when SPCS token is present, but pass it through if set.
 [[ -n "${BENCH_CONNECTION:-}" ]]  && args+=(--connection "${BENCH_CONNECTION}")
 
+echo "[entrypoint] resources: cpu_request=${BENCH_CPU_REQUEST} memory_request=${BENCH_MEMORY_REQUEST} cpu_limit=${BENCH_CPU_LIMIT} memory_limit=${BENCH_MEMORY_LIMIT}" >&2
 echo "[entrypoint] python iwtest.py ${args[*]}" >&2
 exec python /app/iwtest.py "${args[@]}"
