@@ -274,7 +274,7 @@ LIMIT 20;
 
 
 def _sql_query2(database: str, schema: str, table_name: str) -> str:
-    """Query 2: count events by event type for tenant, date range, and region."""
+    """Query 2: count events by event type for tenant, date range, and region using binding parameters"""
     events = _events_table_ref(database, schema, table_name)
     return f"""
 SELECT 
