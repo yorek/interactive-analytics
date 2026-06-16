@@ -483,6 +483,18 @@ class ServerQueryStats:
     p50_queue_ms: float
     p95_queue_ms: float
     p99_queue_ms: float
+    avg_compilation_ms: float
+    min_compilation_ms: float
+    max_compilation_ms: float
+    p50_compilation_ms: float
+    p95_compilation_ms: float
+    p99_compilation_ms: float
+    avg_execution_ms: float
+    min_execution_ms: float
+    max_execution_ms: float
+    p50_execution_ms: float
+    p95_execution_ms: float
+    p99_execution_ms: float
     first_query_at: Any
     last_query_at: Any
 
@@ -536,6 +548,22 @@ SELECT
         AS p95_queue_ms,
     PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY {_QUEUE_TIME_EXPR})::NUMBER(10, 2)
         AS p99_queue_ms,
+    AVG(compilation_time)::NUMBER(10, 2) AS avg_compilation_ms,
+    MIN(compilation_time)::NUMBER(10, 2) AS min_compilation_ms,
+    MAX(compilation_time)::NUMBER(10, 2) AS max_compilation_ms,
+    MEDIAN(compilation_time)::NUMBER(10, 2) AS p50_compilation_ms,
+    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY compilation_time)::NUMBER(10, 2)
+        AS p95_compilation_ms,
+    PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY compilation_time)::NUMBER(10, 2)
+        AS p99_compilation_ms,
+    AVG(execution_time)::NUMBER(10, 2) AS avg_execution_ms,
+    MIN(execution_time)::NUMBER(10, 2) AS min_execution_ms,
+    MAX(execution_time)::NUMBER(10, 2) AS max_execution_ms,
+    MEDIAN(execution_time)::NUMBER(10, 2) AS p50_execution_ms,
+    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY execution_time)::NUMBER(10, 2)
+        AS p95_execution_ms,
+    PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY execution_time)::NUMBER(10, 2)
+        AS p99_execution_ms,
     MIN(start_time) AS first_query_at,
     MAX(end_time) AS last_query_at
 """
@@ -562,8 +590,20 @@ def _server_stats_from_rows(rows: Sequence[tuple[Any, ...]]) -> list[ServerQuery
                 p50_queue_ms=float(row[13]),
                 p95_queue_ms=float(row[14]),
                 p99_queue_ms=float(row[15]),
-                first_query_at=row[16],
-                last_query_at=row[17],
+                avg_compilation_ms=float(row[16]),
+                min_compilation_ms=float(row[17]),
+                max_compilation_ms=float(row[18]),
+                p50_compilation_ms=float(row[19]),
+                p95_compilation_ms=float(row[20]),
+                p99_compilation_ms=float(row[21]),
+                avg_execution_ms=float(row[22]),
+                min_execution_ms=float(row[23]),
+                max_execution_ms=float(row[24]),
+                p50_execution_ms=float(row[25]),
+                p95_execution_ms=float(row[26]),
+                p99_execution_ms=float(row[27]),
+                first_query_at=row[28],
+                last_query_at=row[29],
             )
         )
     return stats
@@ -882,12 +922,34 @@ _QUEUE_METRICS: tuple[tuple[str, str, str], ...] = (
     ("max queue", "max", "max_queue_ms"),
 )
 
+_COMPILATION_METRICS: tuple[tuple[str, str, str], ...] = (
+    ("avg compilation", "avg", "avg_compilation_ms"),
+    ("min compilation", "min", "min_compilation_ms"),
+    ("p50 compilation", "p50", "p50_compilation_ms"),
+    ("p95 compilation", "p95", "p95_compilation_ms"),
+    ("p99 compilation", "p99", "p99_compilation_ms"),
+    ("max compilation", "max", "max_compilation_ms"),
+)
+
+_EXECUTION_METRICS: tuple[tuple[str, str, str], ...] = (
+    ("avg execution", "avg", "avg_execution_ms"),
+    ("min execution", "min", "min_execution_ms"),
+    ("p50 execution", "p50", "p50_execution_ms"),
+    ("p95 execution", "p95", "p95_execution_ms"),
+    ("p99 execution", "p99", "p99_execution_ms"),
+    ("max execution", "max", "max_execution_ms"),
+)
+
 
 def _print_total_line(label: str, ms: float) -> None:
     print(f"    {label:<14}: {ms:.2f} ms ({_ms_to_seconds(ms):.3f} s)")
 
 
-def _print_server_stats_block(server: ServerQueryStats | None) -> None:
+def _print_server_stats_block(
+    server: ServerQueryStats | None,
+    *,
+    detailed: bool = False,
+) -> None:
     """Print Snowflake QUERY_HISTORY aggregates for one warehouse result."""
     print("  Server (Snowflake QUERY_HISTORY, total_elapsed_time)")
     if server is None:
@@ -902,11 +964,18 @@ def _print_server_stats_block(server: ServerQueryStats | None) -> None:
             print(f"    throughput      : {qps:.2f} q/s")
     for label, _, attr in _TOTAL_METRICS:
         _print_total_line(label, float(getattr(server, attr)))
-    print(
-        "  Server queue (provisioning + repair + overload, ms)"
-    )
-    for label, _, attr in _QUEUE_METRICS:
-        _print_total_line(label, float(getattr(server, attr)))
+    if detailed:
+        print("  Server compilation (compilation_time, ms)")
+        for label, _, attr in _COMPILATION_METRICS:
+            _print_total_line(label, float(getattr(server, attr)))
+        print("  Server execution (execution_time, ms)")
+        for label, _, attr in _EXECUTION_METRICS:
+            _print_total_line(label, float(getattr(server, attr)))
+        print(
+            "  Server queue (provisioning + repair + overload, ms)"
+        )
+        for label, _, attr in _QUEUE_METRICS:
+            _print_total_line(label, float(getattr(server, attr)))
     print(f"    first query   : {server.first_query_at}")
     print(f"    last query    : {server.last_query_at}")
 
@@ -1392,6 +1461,14 @@ def parse_args() -> argparse.Namespace:
             f"Choices: {', '.join(WAREHOUSE_CHOICES)}."
         ),
     )
+    p.add_argument(
+        "--detailed",
+        action="store_true",
+        help=(
+            "Include server-side compilation_time, execution_time, and queue "
+            "breakdowns (avg, min, max, p50, p95, p99) in results."
+        ),
+    )
 
     return p.parse_args()
 
@@ -1670,6 +1747,7 @@ def print_single(
     test_id: str,
     workload: str,
     server_stats: Sequence[ServerQueryStats],
+    detailed: bool = False,
 ) -> None:
     """Print client and server latency summary for one `run_phase` result dict."""
     stats = summarize(result["latencies"])
@@ -1697,7 +1775,7 @@ def print_single(
         print(f"    throughput      : {qps:.2f} q/s")
     for label, client_key, _ in _TOTAL_METRICS:
         _print_total_line(label, stats[client_key] * 1000.0)
-    _print_server_stats_block(server)
+    _print_server_stats_block(server, detailed=detailed)
 
 
 def print_compare(
@@ -1708,6 +1786,7 @@ def print_compare(
     test_id: str,
     workload: str,
     server_stats: Sequence[ServerQueryStats],
+    detailed: bool = False,
 ) -> None:
     """Print side-by-side stats for two `run_phase` results (e.g. standard vs interactive)."""
     sa = summarize(a["latencies"])
@@ -1783,6 +1862,25 @@ def print_compare(
 
         for label, _, attr in _TOTAL_METRICS:
             srv_line(label, attr)
+        if detailed:
+            print()
+            print("=== Server compilation comparison (compilation_time, ms) ===")
+            comp_header = (
+                f"{'metric':<16} {name_a:>32} {name_b:>32} {'delta (b-a)':>14}"
+            )
+            print(comp_header)
+            print("-" * len(comp_header))
+            for label, _, attr in _COMPILATION_METRICS:
+                srv_line(label, attr)
+            print()
+            print("=== Server execution comparison (execution_time, ms) ===")
+            exec_header = (
+                f"{'metric':<16} {name_a:>32} {name_b:>32} {'delta (b-a)':>14}"
+            )
+            print(exec_header)
+            print("-" * len(exec_header))
+            for label, _, attr in _EXECUTION_METRICS:
+                srv_line(label, attr)
         ca = sa_srv.query_count if sa_srv is not None else None
         cb = sb_srv.query_count if sb_srv is not None else None
         count_a = f"{ca:>32}" if ca is not None else f"{'n/a':>32}"
@@ -1816,13 +1914,16 @@ def print_compare(
         else:
             qps_delta = f"{'n/a':>14}"
         print(f"{'throughput':<16} {qps_a} {qps_b} {qps_delta}")
-        print()
-        print("=== Server queue comparison (provisioning + repair + overload, ms) ===")
-        queue_header = f"{'metric':<16} {name_a:>32} {name_b:>32} {'delta (b-a)':>14}"
-        print(queue_header)
-        print("-" * len(queue_header))
-        for label, _, attr in _QUEUE_METRICS:
-            srv_line(label, attr)
+        if detailed:
+            print()
+            print("=== Server queue comparison (provisioning + repair + overload, ms) ===")
+            queue_header = (
+                f"{'metric':<16} {name_a:>32} {name_b:>32} {'delta (b-a)':>14}"
+            )
+            print(queue_header)
+            print("-" * len(queue_header))
+            for label, _, attr in _QUEUE_METRICS:
+                srv_line(label, attr)
 
 
 def main() -> int:
@@ -1947,6 +2048,7 @@ def main() -> int:
             test_id=test_id,
             workload=args.workload,
             server_stats=server_stats,
+            detailed=args.detailed,
         )
         print_single(
             b,
@@ -1954,6 +2056,7 @@ def main() -> int:
             test_id=test_id,
             workload=args.workload,
             server_stats=server_stats,
+            detailed=args.detailed,
         )
         print_compare(
             a,
@@ -1962,6 +2065,7 @@ def main() -> int:
             test_id=test_id,
             workload=args.workload,
             server_stats=server_stats,
+            detailed=args.detailed,
         )
     else:
         print_single(
@@ -1970,6 +2074,7 @@ def main() -> int:
             test_id=test_id,
             workload=args.workload,
             server_stats=server_stats,
+            detailed=args.detailed,
         )
 
     return 0

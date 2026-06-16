@@ -1,6 +1,6 @@
 [project]
 name = "interactive-vs-stadard"
-version = "0.1.2"
+version = "0.1.3"
 description = "A simple demo to showcase the high-concurrency, low-latency performance improvements of Interactive Tables vs regular tables"
 requires-python = ">=3.11"
 dependencies = [
