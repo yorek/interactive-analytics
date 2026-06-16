@@ -2,7 +2,8 @@
 
 Runs one of four query workloads in parallel across N concurrent users (threads),
 each running I iterations (workload is selectable via --workload; default query1).
-query0 is a single-row point lookup by tenant and event date; query1 uses literal
+query0 is a single-row point lookup by tenant and event date (event dates are
+random within the min/max EVENT_DATE loaded from EVENTS or EVENTS_IT); query1 uses literal
 filters; query2 binds a random TENANT_ID (1–10000), EVENT_DATE
 range (within the last three calendar months), and REGION on every query; query3
 binds tenant, date range, regions, and event type for daily counts sorted by date.
@@ -22,6 +23,7 @@ import re
 import statistics
 import sys
 import time
+import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
@@ -32,6 +34,16 @@ from dotenv import load_dotenv
 
 _SPCS_TOKEN_PATH = Path("/snowflake/session/token")
 _ENV_PATH = Path(__file__).resolve().parent / ".env"
+_PYPROJECT_PATH = Path(__file__).resolve().parent / "pyproject.toml"
+
+
+def _read_project_version() -> str:
+    """Return the project version from pyproject.toml (single source of truth)."""
+    with _PYPROJECT_PATH.open("rb") as f:
+        return str(tomllib.load(f)["project"]["version"])
+
+
+__version__ = _read_project_version()
 load_dotenv(_ENV_PATH)
 
 def _env_str(key: str, fallback: str) -> str:
@@ -45,8 +57,6 @@ DEFAULT_INTERACTIVE_WAREHOUSE = _env_str("BENCH_INTERACTIVE_WAREHOUSE", "IW_WH")
 
 TENANT_ID_MIN = 1
 TENANT_ID_MAX = 10000
-
-Q0_LOOKBACK_MONTHS = 12
 
 Q2_REGIONS: tuple[str, ...] = ("us-east", "us-west", "eu-west", "ap-south")
 Q2_LOOKBACK_MONTHS = 3
@@ -229,15 +239,24 @@ def _random_tenant_id(rng: random.Random) -> int:
     return rng.randint(TENANT_ID_MIN, TENANT_ID_MAX)
 
 
-def _random_event_date(rng: random.Random, anchor: date | None = None) -> str:
-    """Return a random ISO date within the recent-month lookback window."""
-    today = anchor or date.today()
-    month_start, month_end = rng.choice(
-        _recent_month_ranges(today, Q0_LOOKBACK_MONTHS)
-    )
-    day_count = (month_end - month_start).days
-    offset = rng.randrange(day_count) if day_count else 0
-    return (month_start + timedelta(days=offset)).isoformat()
+def _parse_event_date(value: Any) -> date:
+    """Return a date parsed from a Snowflake EVENT_DATE column value."""
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value)[:10])
+
+
+def _random_event_date_in_range(
+    rng: random.Random,
+    min_date: date,
+    max_date: date,
+) -> str:
+    """Return a random ISO date in the inclusive [min_date, max_date] window."""
+    day_count = (max_date - min_date).days + 1
+    offset = rng.randrange(day_count)
+    return (min_date + timedelta(days=offset)).isoformat()
 
 
 def _sql_query0(database: str, schema: str, table_name: str) -> str:
@@ -319,11 +338,23 @@ LIMIT 50;
 """
 
 
+@dataclass(frozen=True, slots=True)
+class Query0DateRange:
+    """Inclusive EVENT_DATE bounds from the events table for query0 binds."""
+
+    min_date: date
+    max_date: date
+
+
 def _bind_query0(
-    rng: random.Random, anchor: date | None = None
+    rng: random.Random,
+    date_range: Query0DateRange,
 ) -> tuple[int, str]:
-    """Bind tenant_id and one event date."""
-    return _random_tenant_id(rng), _random_event_date(rng, anchor)
+    """Bind tenant_id and a random event_date within the table's date range."""
+    return (
+        _random_tenant_id(rng),
+        _random_event_date_in_range(rng, date_range.min_date, date_range.max_date),
+    )
 
 
 def _bind_query2(
@@ -376,7 +407,7 @@ class Workload:
 
 
 WORKLOADS: dict[str, Workload] = {
-    "query0": Workload(build_sql=_sql_query0, random_binds=_bind_query0),
+    "query0": Workload(build_sql=_sql_query0),
     "query1": Workload(build_sql=_sql_query1),
     "query2": Workload(build_sql=_sql_query2, random_binds=_bind_query2),
     "query3": Workload(build_sql=_sql_query3, random_binds=_bind_query3),
@@ -399,8 +430,19 @@ def workload_doc(workload: str) -> str:
     return WORKLOADS[workload].description
 
 
-def workload_binds(workload: str, rng: random.Random) -> tuple[Any, ...] | None:
+def workload_binds(
+    workload: str,
+    rng: random.Random,
+    *,
+    query0_dates: Query0DateRange | None = None,
+) -> tuple[Any, ...] | None:
     """Return bind parameters for one execution of `workload`, or None for literals."""
+    if workload == "query0":
+        if query0_dates is None:
+            raise RuntimeError(
+                "query0 requires event date bounds; load them with fetch_query0_date_range()"
+            )
+        return _bind_query0(rng, query0_dates)
     generator = WORKLOADS[workload].random_binds
     return generator(rng) if generator is not None else None
 
@@ -435,6 +477,12 @@ class ServerQueryStats:
     p50_total_ms: float
     p95_total_ms: float
     p99_total_ms: float
+    avg_queue_ms: float
+    min_queue_ms: float
+    max_queue_ms: float
+    p50_queue_ms: float
+    p95_queue_ms: float
+    p99_queue_ms: float
     first_query_at: Any
     last_query_at: Any
 
@@ -462,7 +510,11 @@ def _query_history_service_user_name() -> str | None:
     return service_name or None
 
 
-_SERVER_STATS_SELECT = """
+_QUEUE_TIME_EXPR = (
+    "queued_provisioning_time + queued_repair_time + queued_overload_time"
+)
+
+_SERVER_STATS_SELECT = f"""
 SELECT
     warehouse_name,
     SPLIT_PART(query_tag, ':', 2) AS session_test_id,
@@ -476,6 +528,14 @@ SELECT
         AS p95_total_ms,
     PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY total_elapsed_time)::NUMBER(10, 2)
         AS p99_total_ms,
+    AVG({_QUEUE_TIME_EXPR})::NUMBER(10, 2) AS avg_queue_ms,
+    MIN({_QUEUE_TIME_EXPR})::NUMBER(10, 2) AS min_queue_ms,
+    MAX({_QUEUE_TIME_EXPR})::NUMBER(10, 2) AS max_queue_ms,
+    MEDIAN({_QUEUE_TIME_EXPR})::NUMBER(10, 2) AS p50_queue_ms,
+    PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY {_QUEUE_TIME_EXPR})::NUMBER(10, 2)
+        AS p95_queue_ms,
+    PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY {_QUEUE_TIME_EXPR})::NUMBER(10, 2)
+        AS p99_queue_ms,
     MIN(start_time) AS first_query_at,
     MAX(end_time) AS last_query_at
 """
@@ -496,8 +556,14 @@ def _server_stats_from_rows(rows: Sequence[tuple[Any, ...]]) -> list[ServerQuery
                 p50_total_ms=float(row[7]),
                 p95_total_ms=float(row[8]),
                 p99_total_ms=float(row[9]),
-                first_query_at=row[10],
-                last_query_at=row[11],
+                avg_queue_ms=float(row[10]),
+                min_queue_ms=float(row[11]),
+                max_queue_ms=float(row[12]),
+                p50_queue_ms=float(row[13]),
+                p95_queue_ms=float(row[14]),
+                p99_queue_ms=float(row[15]),
+                first_query_at=row[16],
+                last_query_at=row[17],
             )
         )
     return stats
@@ -807,6 +873,15 @@ _TOTAL_METRICS: tuple[tuple[str, str, str], ...] = (
     ("max total", "max", "max_total_ms"),
 )
 
+_QUEUE_METRICS: tuple[tuple[str, str, str], ...] = (
+    ("avg queue", "avg", "avg_queue_ms"),
+    ("min queue", "min", "min_queue_ms"),
+    ("p50 queue", "p50", "p50_queue_ms"),
+    ("p95 queue", "p95", "p95_queue_ms"),
+    ("p99 queue", "p99", "p99_queue_ms"),
+    ("max queue", "max", "max_queue_ms"),
+)
+
 
 def _print_total_line(label: str, ms: float) -> None:
     print(f"    {label:<14}: {ms:.2f} ms ({_ms_to_seconds(ms):.3f} s)")
@@ -826,6 +901,11 @@ def _print_server_stats_block(server: ServerQueryStats | None) -> None:
         if qps is not None:
             print(f"    throughput      : {qps:.2f} q/s")
     for label, _, attr in _TOTAL_METRICS:
+        _print_total_line(label, float(getattr(server, attr)))
+    print(
+        "  Server queue (provisioning + repair + overload, ms)"
+    )
+    for label, _, attr in _QUEUE_METRICS:
         _print_total_line(label, float(getattr(server, attr)))
     print(f"    first query   : {server.first_query_at}")
     print(f"    last query    : {server.last_query_at}")
@@ -1281,7 +1361,8 @@ def parse_args() -> argparse.Namespace:
         choices=WORKLOAD_NAMES,
         default="query1",
         help=(
-            "Which query shape to run: query0 (single-row point lookup), "
+            "Which query shape to run: query0 (single-row point lookup; event dates "
+            "within EVENTS min/max), "
             "query1 (literal filters; default), "
             "query2 (parameterized tenant_id, date range + region), "
             "query3 (parameterized daily event counts sorted by date)."
@@ -1313,6 +1394,41 @@ def parse_args() -> argparse.Namespace:
     )
 
     return p.parse_args()
+
+
+def fetch_query0_date_range(
+    connection_name: str,
+    database: str,
+    schema: str,
+    warehouse: str,
+) -> Query0DateRange:
+    """Load inclusive min/max EVENT_DATE from the warehouse's events table."""
+    table_name = workload_table_name(warehouse)
+    table_ref = _events_table_ref(database, schema, table_name)
+    conn = snowflake_connect(connection_name=connection_name)
+    try:
+        cur = conn.cursor()
+        try:
+            cur.execute(f"USE WAREHOUSE {warehouse}")
+            cur.execute(
+                f"""
+                SELECT MIN(EVENT_DATE), MAX(EVENT_DATE)
+                FROM {table_ref}
+                """
+            )
+            row = cur.fetchone()
+        finally:
+            cur.close()
+    finally:
+        conn.close()
+    if row is None or row[0] is None or row[1] is None:
+        raise RuntimeError(
+            f"query0 date range unavailable: no EVENT_DATE values in {table_ref}"
+        )
+    return Query0DateRange(
+        min_date=_parse_event_date(row[0]),
+        max_date=_parse_event_date(row[1]),
+    )
 
 
 def open_workload_connection(
@@ -1382,25 +1498,30 @@ def worker(
     workload: str,
     test_id: str,
     rng_seed: int,
-) -> tuple[list[float], int, list[int], int]:
-    """Run `iterations` of `workload` SQL on one connection; return (latencies_s, errors, row_counts, queries_executed)."""
+    query0_dates: Query0DateRange | None = None,
+) -> tuple[list[float], int, list[int]]:
+    """Run `iterations` of `workload` SQL on one connection; return (latencies_s, errors, row_counts)."""
     rng = random.Random(rng_seed)
     query_tag = workload_query_tag(test_id, workload)
     latencies: list[float] = []
     row_counts: list[int] = []
     errors = 0
-    queries_executed = 0
 
     conn, cur, qsql = open_workload_connection(
         connection_name, warehouse, database, schema, workload
     )
     try:
         # Warmup is untagged so QUERY_HISTORY counts match timed benchmark queries.
-        warmup_workload_session(cur, qsql, workload_binds(workload, rng))
+        warmup_workload_session(
+            cur, qsql, workload_binds(workload, rng, query0_dates=query0_dates)
+        )
         for _ in range(iterations):
             try:
                 latency, nrows = execute_workload_once(
-                    cur, qsql, workload_binds(workload, rng), query_tag
+                    cur,
+                    qsql,
+                    workload_binds(workload, rng, query0_dates=query0_dates),
+                    query_tag,
                 )
                 latencies.append(latency)
                 row_counts.append(nrows)
@@ -1411,12 +1532,11 @@ def worker(
                     file=sys.stderr,
                     flush=True,
                 )
-            queries_executed += 1
     finally:
         cur.close()
         conn.close()
 
-    return latencies, errors, row_counts, queries_executed
+    return latencies, errors, row_counts
 
 
 def run_phase(
@@ -1434,8 +1554,20 @@ def run_phase(
     """Run all worker threads for one warehouse; return metrics including `latencies` and `row_counts`."""
     wh_line = warehouse_display_name(warehouse, warehouse_sizes)
     query_tag = workload_query_tag(test_id, workload)
+    table_name = workload_table_name(warehouse)
+    table_ref = _events_table_ref(database, schema, table_name)
+    query0_dates: Query0DateRange | None = None
+    if workload == "query0":
+        query0_dates = fetch_query0_date_range(
+            connection_name, database, schema, warehouse
+        )
+        print(
+            f"[run] query0 event dates: {query0_dates.min_date.isoformat()} .. "
+            f"{query0_dates.max_date.isoformat()} (from {table_ref})",
+            flush=True,
+        )
     print(
-        f"[run] warehouse={wh_line} workload={workload} test_id={test_id}"
+        f"[run] warehouse={wh_line} table={table_ref} workload={workload} test_id={test_id}"
         f" query_tag={query_tag} users={users} iterations={iterations}"
         f" total_queries={users * iterations}",
         flush=True,
@@ -1445,7 +1577,7 @@ def run_phase(
     all_latencies: list[float] = []
     all_row_counts: list[int] = []
     total_errors = 0
-    total_queries_executed = 0
+    queries_planned = users * iterations
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=users) as ex:
         futures = [
@@ -1462,25 +1594,41 @@ def run_phase(
                 # Per-user seed derived from base_seed so query2/query3 bind draws are
                 # picked across compare-mode phases for fairness.
                 rng_seed=base_seed + i,
+                query0_dates=query0_dates,
             )
             for i in range(users)
         ]
         for fut in concurrent.futures.as_completed(futures):
-            latencies, errors, row_counts, queries_executed = fut.result()
+            latencies, errors, row_counts = fut.result()
             all_latencies.extend(latencies)
             all_row_counts.extend(row_counts)
             total_errors += errors
-            total_queries_executed += queries_executed
 
     wall_seconds = time.perf_counter() - wall_start
+    queries_timed = len(all_latencies)
+    if queries_timed + total_errors != queries_planned:
+        print(
+            f"[run] warning: expected {queries_planned} timed queries "
+            f"({users} users × {iterations} iter), got {queries_timed} timed "
+            f"+ {total_errors} errors",
+            flush=True,
+        )
+    else:
+        print(
+            f"[run] completed: {queries_timed} timed queries "
+            f"({users} users × {iterations} iter)",
+            flush=True,
+        )
 
     return {
         "warehouse": warehouse,
+        "table": table_ref,
         "users": users,
         "iterations": iterations,
+        "queries_planned": queries_planned,
+        "queries_timed": queries_timed,
         "wall_seconds": wall_seconds,
         "errors": total_errors,
-        "queries_executed": total_queries_executed,
         "latencies": all_latencies,
         "row_counts": all_row_counts,
     }
@@ -1531,8 +1679,12 @@ def print_single(
     print()
     title = warehouse_display_name(result["warehouse"], warehouse_sizes)
     print(f"=== Result: {title} ===")
+    print(f"    table           : {result['table']}")
     print("  Client (end-to-end, total_elapsed_time)")
-    print(f"    queries executed: {result['queries_executed']}")
+    print(
+        f"    queries timed   : {result['queries_timed']} "
+        f"({result['users']} users × {result['iterations']} iter)"
+    )
     rc = result["row_counts"]
     if rc:
         print(f"    avg rows/query  : {statistics.fmean(rc):.2f}")
@@ -1598,7 +1750,11 @@ def print_compare(
         dcell = f"{delta:>+14.2f}" if ma is not None and mb is not None else f"{'n/a':>14}"
         print(f"{'avg rows/q':<12} {cell(ma)} {cell(mb)} {dcell}")
     print()
-    print(f"{'queries exec':<12} {a['queries_executed']:>32} {b['queries_executed']:>32}")
+    print(
+        f"  (each warehouse runs {a['queries_planned']} queries: "
+        f"{a['users']} users × {a['iterations']} iter)"
+    )
+    print(f"{'queries timed':<12} {a['queries_timed']:>32} {b['queries_timed']:>32}")
     print(f"errors        {a['errors']:>32} {b['errors']:>32}")
     print(f"wall seconds  {a['wall_seconds']:>32.3f} {b['wall_seconds']:>32.3f}")
 
@@ -1660,6 +1816,13 @@ def print_compare(
         else:
             qps_delta = f"{'n/a':>14}"
         print(f"{'throughput':<16} {qps_a} {qps_b} {qps_delta}")
+        print()
+        print("=== Server queue comparison (provisioning + repair + overload, ms) ===")
+        queue_header = f"{'metric':<16} {name_a:>32} {name_b:>32} {'delta (b-a)':>14}"
+        print(queue_header)
+        print("-" * len(queue_header))
+        for label, _, attr in _QUEUE_METRICS:
+            srv_line(label, attr)
 
 
 def main() -> int:
@@ -1668,6 +1831,7 @@ def main() -> int:
 
     test_id = new_test_id()
     base_seed = resolve_base_seed(args.seed)
+    print(f"[init] version={__version__}", flush=True)
     print(
         "[init] END-TO-END test: timings include network latency and local CPU load.",
         flush=True,

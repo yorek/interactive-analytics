@@ -307,7 +307,7 @@ wheels = [
 
 [[package]]
 name = "interactive-vs-stadard"
-version = "0.1.0"
+version = "0.1.2"
 source = { virtual = "." }
 dependencies = [
     { name = "python-dotenv" },

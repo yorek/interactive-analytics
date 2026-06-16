@@ -156,6 +156,10 @@ preflight_fail() {
   exit 1
 }
 
+iwtest_version() {
+  (cd "${PROJECT_ROOT}" && uv run python -c "import iwtest; print(iwtest.__version__)")
+}
+
 parse_image_path() {
   local p="${IMAGE_PATH#/}"
   if [[ "${p}" != */*/*/*:* ]]; then
@@ -174,6 +178,7 @@ parse_image_path() {
 }
 
 verify_spcs_setup() {
+  echo "[preflight] version=$(iwtest_version)"
   echo "[preflight] checking SPCS prerequisites (connection=${SF_CONNECTION})"
 
   if ! command -v snow >/dev/null 2>&1; then
