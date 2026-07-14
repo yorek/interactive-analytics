@@ -1,0 +1,188 @@
+[
+  {
+    "query": "Q1",
+    "output": {
+      "L_RETURNFLAG": "A",
+      "L_LINESTATUS": "F",
+      "SUM_QTY": 37734107.0,
+      "SUM_BASE_PRICE": 56586554400.73,
+      "SUM_DISC_PRICE": 53758257134.87,
+      "SUM_CHARGE": 55909065222.83,
+      "AVG_QTY": 25.52,
+      "AVG_PRICE": 38273.13,
+      "AVG_DISC": 0.05,
+      "COUNT_ORDER": 1478493
+    }
+  },
+  {
+    "query": "Q2",
+    "output": {
+      "S_ACCTBAL": 9938.53,
+      "S_NAME": "Supplier#000005359",
+      "N_NAME": "UNITED KINGDOM",
+      "P_PARTKEY": 185358,
+      "P_MFGR": "Manufacturer#4",
+      "S_ADDRESS": "QKuHYh,vZGiwu2FWEJoLDx04",
+      "S_PHONE": "33-429-790-6131",
+      "S_COMMENT": "uriously regular requests hag"
+    }
+  },
+  {
+    "query": "Q3",
+    "output": {
+      "L_ORDERKEY": 2456423,
+      "REVENUE": 406181.01,
+      "O_ORDERDATE": "1995-03-05",
+      "O_SHIPPRIORITY": 0
+    }
+  },
+  {
+    "query": "Q4",
+    "output": {
+      "O_ORDERPRIORITY": "1-URGENT",
+      "ORDER_COUNT": 10594
+    }
+  },
+  {
+    "query": "Q5",
+    "output": {
+      "N_NAME": "INDONESIA",
+      "REVENUE": 55502041.17
+    }
+  },
+  {
+    "query": "Q6",
+    "output": {
+      "REVENUE": 123141078.23
+    }
+  },
+  {
+    "query": "Q7",
+    "output": {
+      "SUPP_NATION": "FRANCE",
+      "CUST_NATION": "GERMANY",
+      "L_YEAR": 1995,
+      "REVENUE": 54639732.73
+    }
+  },
+  {
+    "query": "Q8",
+    "output": {
+      "YEAR": 1995,
+      "MKT_SHARE": 0.03
+    }
+  },
+  {
+    "query": "Q9",
+    "output": {
+      "NATION": "ALGERIA",
+      "YEAR": 1998,
+      "SUM_PROFIT": 27136900.18
+    }
+  },
+  {
+    "query": "Q10",
+    "output": {
+      "C_CUSTKEY": 57040,
+      "C_NAME": "Customer#000057040",
+      "REVENUE": 734235.24,
+      "C_ACCTBAL": 632.87,
+      "N_NAME": "JAPAN",
+      "C_ADDRESS": "Eioyzjf4pp",
+      "C_PHONE": "22-895-641-3466",
+      "C_COMMENT": "sits. slyly regular requests sleep alongside of the regular inst"
+    }
+  },
+  {
+    "query": "Q11",
+    "output": {
+      "PS_PARTKEY": 129760,
+      "VALUE": 17538456.86
+    }
+  },
+  {
+    "query": "Q12",
+    "output": {
+      "L_SHIPMODE": "MAIL",
+      "HIGH_LINE_COUNT": 6202,
+      "LOW_LINE_COUNT": 9324
+    }
+  },
+  {
+    "query": "Q13",
+    "output": {
+      "C_COUNT": 9,
+      "CUSTDIST": 6641
+    }
+  },
+  {
+    "query": "Q14",
+    "output": {
+      "PROMO_REVENUE": 16.38
+    }
+  },
+  {
+    "query": "Q15",
+    "output": {
+      "S_SUPPKEY": 8449,
+      "S_NAME": "Supplier#000008449",
+      "S_ADDRESS": "Wp34zim9qYFbVctdW",
+      "S_PHONE": "20-469-856-8873",
+      "TOTAL_REVENUE": 1772627.21
+    }
+  },
+  {
+    "query": "Q16",
+    "output": {
+      "P_BRAND": "Brand#41",
+      "P_TYPE": "MEDIUM BRUSHED TIN",
+      "P_SIZE": 3,
+      "SUPPLIER_CNT": 28
+    }
+  },
+  {
+    "query": "Q17",
+    "output": {
+      "AVG_YEARLY": 348406.05
+    }
+  },
+  {
+    "query": "Q18",
+    "output": {
+      "C_NAME": "Customer#000128120",
+      "C_CUSTKEY": 128120,
+      "O_ORDERDATE": "1994-04-07",
+      "O_TOTALPRICE": 544089.09,
+      "O_ORDERKEY": 4722021,
+      "SUM_L_QUANTITY": 323.0
+    }
+  },
+  {
+    "query": "Q19",
+    "output": {
+      "REVENUE": 3083843.05
+    }
+  },
+  {
+    "query": "Q20",
+    "output": {
+      "S_NAME": "Supplier#000000020",
+      "S_ADDRESS": "iybAE,RmTymrZVYaFZva2SH,j"
+    }
+  },
+  {
+    "query": "Q21",
+    "output": {
+      "S_NAME": "Supplier#000002829",
+      "NUMWAIT": 20
+    }
+  },
+  {
+    "query": "Q22",
+    "output": {
+      "CNTRYCODE": 13,
+      "NUMCUST": 888,
+      "TOTACCTBAL": 6737713.99
+    }
+  }
+]

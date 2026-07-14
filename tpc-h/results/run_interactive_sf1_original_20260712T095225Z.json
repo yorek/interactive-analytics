@@ -1,0 +1,454 @@
+{
+  "target": "interactive",
+  "scale": "1",
+  "workload": "original",
+  "summary": {
+    "total_queries": 22,
+    "successful": 22,
+    "failed": 0,
+    "client_elapsed_s": {
+      "total": 8.33526141501352,
+      "avg": 0.3788755188642509,
+      "median": 0.34845154150025337,
+      "min": 0.28472487500403076,
+      "max": 1.1248108329964452,
+      "p95": 1.0199428580464882
+    },
+    "server_elapsed_s": {
+      "total": 2.374,
+      "avg": 0.10790909090909091,
+      "median": 0.115,
+      "min": 0.044,
+      "max": 0.162,
+      "p95": 0.16094999999999998
+    },
+    "validation_passed": 22,
+    "validation_failed": 0,
+    "connection": "PM",
+    "database": "IW_TPCH_BENCH",
+    "schema": "TPCH_SF1_IT",
+    "warehouse": "IW_TPCH_BENCH_WH_1",
+    "warehouse_size": "SMALL",
+    "server_version": "10.23.106 b20260710213651e7744f5c"
+  },
+  "results": [
+    {
+      "query": "query_01",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 4,
+      "client_elapsed_s": 0.3068112500041025,
+      "query_id": "01c5a80f-0817-d60d-0009-71015789fe4b",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d60d-0009-71015789fdb7",
+        "01c5a80f-0817-d60d-0009-71015789fde3",
+        "01c5a80f-0817-d60d-0009-71015789fe0f",
+        "01c5a80f-0817-d60d-0009-71015789fe27",
+        "01c5a80f-0817-d60d-0009-71015789fe4b"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.073,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_02",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 100,
+      "client_elapsed_s": 0.35852025000349386,
+      "query_id": "01c5a80f-0817-d60d-0009-71015789ff0f",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d60d-0009-71015789fe6b",
+        "01c5a80f-0817-d60d-0009-71015789fecb",
+        "01c5a80f-0817-d60d-0009-71015789fef7",
+        "01c5a80f-0817-d60d-0009-71015789ff0f",
+        "01c5a80f-0817-d60d-0009-71015789ff3b"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.121,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_03",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 10,
+      "client_elapsed_s": 0.3153504579968285,
+      "query_id": "01c5a80f-0817-d60d-0009-71015789ffc3",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d60d-0009-71015789ff53",
+        "01c5a80f-0817-d60d-0009-71015789ff93",
+        "01c5a80f-0817-d60d-0009-71015789ffbf",
+        "01c5a80f-0817-d60d-0009-71015789ffc3",
+        "01c5a80f-0817-d60d-0009-71015789ffdb"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.083,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_04",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 5,
+      "client_elapsed_s": 0.3034647920067073,
+      "query_id": "01c5a80f-0817-d60d-0009-7101578a407b",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d60d-0009-7101578a4007",
+        "01c5a80f-0817-d60d-0009-7101578a401f",
+        "01c5a80f-0817-d60d-0009-7101578a404b",
+        "01c5a80f-0817-d60d-0009-7101578a4063",
+        "01c5a80f-0817-d60d-0009-7101578a407b"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.071,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_05",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 5,
+      "client_elapsed_s": 0.34198116699553793,
+      "query_id": "01c5a80f-0817-d60d-0009-7101578a40ff",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d60d-0009-7101578a4093",
+        "01c5a80f-0817-d60d-0009-7101578a40d3",
+        "01c5a80f-0817-d60d-0009-7101578a40ff",
+        "01c5a80f-0817-d60d-0009-7101578a412b",
+        "01c5a80f-0817-d60d-0009-7101578a4143"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.104,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_06",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 1,
+      "client_elapsed_s": 0.28472487500403076,
+      "query_id": "01c5a80f-0817-d60d-0009-7101578a416f",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d60d-0009-7101578a416f",
+        "01c5a80f-0817-d60d-0009-7101578a418b",
+        "01c5a80f-0817-d60d-0009-7101578a41a3",
+        "01c5a80f-0817-d60d-0009-7101578a41bb",
+        "01c5a80f-0817-d60d-0009-7101578a41d3"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.044,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_07",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 4,
+      "client_elapsed_s": 0.40682016600476345,
+      "query_id": "01c5a80f-0817-d60d-0009-7101578a426f",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d60d-0009-7101578a41ff",
+        "01c5a80f-0817-d60d-0009-7101578a4217",
+        "01c5a80f-0817-d60d-0009-7101578a4243",
+        "01c5a80f-0817-d60d-0009-7101578a426f",
+        "01c5a80f-0817-d60d-0009-7101578a429f"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.153,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_08",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 2,
+      "client_elapsed_s": 0.33623125000303844,
+      "query_id": "01c5a80f-0817-d60d-0009-7101578a433b",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d60d-0009-7101578a42cb",
+        "01c5a80f-0817-d60d-0009-7101578a42f7",
+        "01c5a80f-0817-d60d-0009-7101578a4323",
+        "01c5a80f-0817-d60d-0009-7101578a433b",
+        "01c5a80f-0817-d60d-0009-7101578a4353"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.113,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_09",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 175,
+      "client_elapsed_s": 0.371760957998049,
+      "query_id": "01c5a80f-0817-d60d-0009-7101578a4403",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d60d-0009-7101578a437f",
+        "01c5a80f-0817-d60d-0009-7101578a43ab",
+        "01c5a80f-0817-d60d-0009-7101578a43d7",
+        "01c5a80f-0817-d60d-0009-7101578a4403",
+        "01c5a80f-0817-d60d-0009-7101578a4407"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.144,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_10",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 20,
+      "client_elapsed_s": 0.3473955000008573,
+      "query_id": "01c5a80f-0817-d60d-0009-7101578a4493",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d60d-0009-7101578a441f",
+        "01c5a80f-0817-d60d-0009-7101578a444b",
+        "01c5a80f-0817-d60d-0009-7101578a4477",
+        "01c5a80f-0817-d60d-0009-7101578a4493",
+        "01c5a80f-0817-d60d-0009-7101578a44bf"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.122,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_11",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 1048,
+      "client_elapsed_s": 0.425690999996732,
+      "query_id": "01c5a80f-0817-d60d-0009-7101578a456f",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d60d-0009-7101578a44d7",
+        "01c5a80f-0817-d60d-0009-7101578a4517",
+        "01c5a80f-0817-d60d-0009-7101578a4543",
+        "01c5a80f-0817-d60d-0009-7101578a456f",
+        "01c5a80f-0817-d60d-0009-7101578a4587"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.162,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_12",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 2,
+      "client_elapsed_s": 0.3499640830050339,
+      "query_id": "01c5a80f-0817-d60d-0009-7101578a463b",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d60d-0009-7101578a45b3",
+        "01c5a80f-0817-d60d-0009-7101578a45df",
+        "01c5a80f-0817-d60d-0009-7101578a45f7",
+        "01c5a80f-0817-d60d-0009-7101578a4623",
+        "01c5a80f-0817-d60d-0009-7101578a463b"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.098,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_13",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 42,
+      "client_elapsed_s": 0.34950758299964946,
+      "query_id": "01c5a810-0817-d60d-0009-7101578a46af",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d60d-0009-7101578a4657",
+        "01c5a810-0817-d60d-0009-7101578a4683",
+        "01c5a810-0817-d60d-0009-7101578a46af",
+        "01c5a810-0817-d60d-0009-7101578a46c7",
+        "01c5a810-0817-d60d-0009-7101578a46f3"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.121,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_14",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 1,
+      "client_elapsed_s": 0.2899536669938243,
+      "query_id": "01c5a810-0817-d60d-0009-7101578a477f",
+      "attempt_query_ids": [
+        "01c5a810-0817-d60d-0009-7101578a470b",
+        "01c5a810-0817-d60d-0009-7101578a4723",
+        "01c5a810-0817-d60d-0009-7101578a474f",
+        "01c5a810-0817-d60d-0009-7101578a4767",
+        "01c5a810-0817-d60d-0009-7101578a477f"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.057,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_15",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 1,
+      "client_elapsed_s": 0.30014870800368953,
+      "query_id": "01c5a810-0817-d60d-0009-7101578a480b",
+      "attempt_query_ids": [
+        "01c5a810-0817-d60d-0009-7101578a4797",
+        "01c5a810-0817-d60d-0009-7101578a47c3",
+        "01c5a810-0817-d60d-0009-7101578a47e3",
+        "01c5a810-0817-d60d-0009-7101578a480b",
+        "01c5a810-0817-d60d-0009-7101578a4833"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.056,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_16",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 18314,
+      "client_elapsed_s": 1.1248108329964452,
+      "query_id": "01c5a810-0817-d60d-0009-7101578a49ff",
+      "attempt_query_ids": [
+        "01c5a810-0817-d60d-0009-7101578a4857",
+        "01c5a810-0817-d60d-0009-7101578a4913",
+        "01c5a810-0817-d60d-0009-7101578a498f",
+        "01c5a810-0817-d60d-0009-7101578a49ff",
+        "01c5a810-0817-d60d-0009-7101578a4a77"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.155,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_17",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 1,
+      "client_elapsed_s": 0.30393108300631866,
+      "query_id": "01c5a810-0817-d60d-0009-7101578a4b33",
+      "attempt_query_ids": [
+        "01c5a810-0817-d60d-0009-7101578a4adf",
+        "01c5a810-0817-d60d-0009-7101578a4aff",
+        "01c5a810-0817-d60d-0009-7101578a4b2b",
+        "01c5a810-0817-d60d-0009-7101578a4b2f",
+        "01c5a810-0817-d60d-0009-7101578a4b33"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.071,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_18",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 57,
+      "client_elapsed_s": 0.3690060419976362,
+      "query_id": "01c5a810-0817-d60d-0009-7101578a4b63",
+      "attempt_query_ids": [
+        "01c5a810-0817-d60d-0009-7101578a4b37",
+        "01c5a810-0817-d60d-0009-7101578a4b63",
+        "01c5a810-0817-d60d-0009-7101578a4b7b",
+        "01c5a810-0817-d60d-0009-7101578a4ba7",
+        "01c5a810-0817-d60d-0009-7101578a4bd3"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.133,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_19",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 1,
+      "client_elapsed_s": 0.3677807920030318,
+      "query_id": "01c5a810-0817-d60d-0009-7101578a4c53",
+      "attempt_query_ids": [
+        "01c5a810-0817-d60d-0009-7101578a4be7",
+        "01c5a810-0817-d60d-0009-7101578a4c13",
+        "01c5a810-0817-d60d-0009-7101578a4c53",
+        "01c5a810-0817-d60d-0009-7101578a4c6b",
+        "01c5a810-0817-d60d-0009-7101578a4c97"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.117,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_20",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 186,
+      "client_elapsed_s": 0.33796624999376945,
+      "query_id": "01c5a810-0817-d60d-0009-7101578a4d3b",
+      "attempt_query_ids": [
+        "01c5a810-0817-d60d-0009-7101578a4caf",
+        "01c5a810-0817-d60d-0009-7101578a4cdb",
+        "01c5a810-0817-d60d-0009-7101578a4d07",
+        "01c5a810-0817-d60d-0009-7101578a4d23",
+        "01c5a810-0817-d60d-0009-7101578a4d3b"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.104,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_21",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 100,
+      "client_elapsed_s": 0.3662022079952294,
+      "query_id": "01c5a810-0817-d60d-0009-7101578a4ddf",
+      "attempt_query_ids": [
+        "01c5a810-0817-d60d-0009-7101578a4d67",
+        "01c5a810-0817-d60d-0009-7101578a4d87",
+        "01c5a810-0817-d60d-0009-7101578a4db3",
+        "01c5a810-0817-d60d-0009-7101578a4ddf",
+        "01c5a810-0817-d60d-0009-7101578a4dfb"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.136,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_22",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 7,
+      "client_elapsed_s": 0.3772385000047507,
+      "query_id": "01c5a810-0817-d60d-0009-7101578a4eb3",
+      "attempt_query_ids": [
+        "01c5a810-0817-d60d-0009-7101578a4e27",
+        "01c5a810-0817-d60d-0009-7101578a4e43",
+        "01c5a810-0817-d60d-0009-7101578a4e6b",
+        "01c5a810-0817-d60d-0009-7101578a4e87",
+        "01c5a810-0817-d60d-0009-7101578a4eb3"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.136,
+      "validation": "PASS",
+      "validation_error": null
+    }
+  ]
+}

@@ -1,0 +1,454 @@
+{
+  "target": "standard",
+  "scale": "1",
+  "workload": "original",
+  "summary": {
+    "total_queries": 22,
+    "successful": 22,
+    "failed": 0,
+    "client_elapsed_s": {
+      "total": 10.565030084020691,
+      "avg": 0.4802286401827587,
+      "median": 0.4689971459993103,
+      "min": 0.30751745800080243,
+      "max": 1.0845566670031985,
+      "p95": 1.0044653419532552
+    },
+    "server_elapsed_s": {
+      "total": 4.138,
+      "avg": 0.1880909090909091,
+      "median": 0.201,
+      "min": 0.069,
+      "max": 0.273,
+      "p95": 0.27075
+    },
+    "validation_passed": 22,
+    "validation_failed": 0,
+    "connection": "PM",
+    "database": "IW_TPCH_BENCH",
+    "schema": "TPCH_SF1",
+    "warehouse": "TPCH_BENCH_WH_1",
+    "warehouse_size": "X-SMALL",
+    "server_version": "10.23.106 b20260710213651e7744f5c"
+  },
+  "results": [
+    {
+      "query": "query_01",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 4,
+      "client_elapsed_s": 0.4255940000002738,
+      "query_id": "01c5a80e-0817-d8aa-0009-71015789ae17",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d8aa-0009-71015789ad5f",
+        "01c5a80e-0817-d9e1-0009-71015789b6cf",
+        "01c5a80e-0817-d8aa-0009-71015789addb",
+        "01c5a80e-0817-d8aa-0009-71015789adef",
+        "01c5a80e-0817-d8aa-0009-71015789ae17"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.156,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_02",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 100,
+      "client_elapsed_s": 0.48930291699798545,
+      "query_id": "01c5a80e-0817-d8aa-0009-71015789af9b",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d8aa-0009-71015789ae37",
+        "01c5a80e-0817-d9e1-0009-71015789b85b",
+        "01c5a80e-0817-d8aa-0009-71015789af7b",
+        "01c5a80e-0817-d8aa-0009-71015789af9b",
+        "01c5a80e-0817-d8aa-0009-71015789afaf"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.238,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_03",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 10,
+      "client_elapsed_s": 0.45611112500046147,
+      "query_id": "01c5a80e-0817-d9e1-0009-71015789b9bb",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d9e1-0009-71015789b95b",
+        "01c5a80e-0817-d9e1-0009-71015789b9bb",
+        "01c5a80e-0817-d9e1-0009-71015789b9d7",
+        "01c5a80e-0817-d8aa-0009-71015789d057",
+        "01c5a80e-0817-d9e1-0009-71015789ba47"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.188,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_04",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 5,
+      "client_elapsed_s": 0.37404454100033036,
+      "query_id": "01c5a80e-0817-d8aa-0009-71015789d15f",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d8aa-0009-71015789d0c7",
+        "01c5a80e-0817-d9e1-0009-71015789baf7",
+        "01c5a80e-0817-d9e1-0009-71015789bb0f",
+        "01c5a80e-0817-d8aa-0009-71015789d15f",
+        "01c5a80e-0817-d9e1-0009-71015789bb43"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.13,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_05",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 5,
+      "client_elapsed_s": 0.5070962499958114,
+      "query_id": "01c5a80e-0817-d9e1-0009-71015789bbef",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d9e1-0009-71015789bb4f",
+        "01c5a80e-0817-d8aa-0009-71015789d18b",
+        "01c5a80e-0817-d9e1-0009-71015789bba7",
+        "01c5a80e-0817-d9e1-0009-71015789bbd7",
+        "01c5a80e-0817-d9e1-0009-71015789bbef"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.201,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_06",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 1,
+      "client_elapsed_s": 0.30751745800080243,
+      "query_id": "01c5a80e-0817-d9e1-0009-71015789bc2f",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d8aa-0009-71015789d21b",
+        "01c5a80e-0817-d9e1-0009-71015789bc2f",
+        "01c5a80e-0817-d8aa-0009-71015789d22f",
+        "01c5a80e-0817-d8aa-0009-71015789d253",
+        "01c5a80e-0817-d9e1-0009-71015789bc77"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.069,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_07",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 4,
+      "client_elapsed_s": 0.46615566699620103,
+      "query_id": "01c5a80e-0817-d9e1-0009-71015789bd7f",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d9e1-0009-71015789bc8f",
+        "01c5a80e-0817-d9e1-0009-71015789bcbf",
+        "01c5a80e-0817-d9e1-0009-71015789bd0b",
+        "01c5a80e-0817-d9e1-0009-71015789bd57",
+        "01c5a80e-0817-d9e1-0009-71015789bd7f"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.21,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_08",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 2,
+      "client_elapsed_s": 0.5449078750025365,
+      "query_id": "01c5a80e-0817-d8aa-0009-71015789d447",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d9e1-0009-71015789bdb7",
+        "01c5a80e-0817-d9e1-0009-71015789bde7",
+        "01c5a80e-0817-d8aa-0009-71015789d3c7",
+        "01c5a80e-0817-d8aa-0009-71015789d407",
+        "01c5a80e-0817-d8aa-0009-71015789d447"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.236,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_09",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 175,
+      "client_elapsed_s": 0.5242091250038357,
+      "query_id": "01c5a80e-0817-d8aa-0009-71015789d4cb",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d8aa-0009-71015789d493",
+        "01c5a80e-0817-d8aa-0009-71015789d4cb",
+        "01c5a80e-0817-d9e1-0009-71015789bf0f",
+        "01c5a80e-0817-d9e1-0009-71015789bf33",
+        "01c5a80e-0817-d9e1-0009-71015789bf53"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.258,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_10",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 20,
+      "client_elapsed_s": 0.4900522909956635,
+      "query_id": "01c5a80e-0817-d9e1-0009-71015789bfeb",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d8aa-0009-71015789d58b",
+        "01c5a80e-0817-d9e1-0009-71015789bfaf",
+        "01c5a80e-0817-d9e1-0009-71015789bfbf",
+        "01c5a80e-0817-d9e1-0009-71015789bfeb",
+        "01c5a80e-0817-d8aa-0009-71015789d643"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.222,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_11",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 1048,
+      "client_elapsed_s": 0.48514337499364046,
+      "query_id": "01c5a80e-0817-d9e1-0009-71015789e17f",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d9e1-0009-71015789e083",
+        "01c5a80e-0817-d9e1-0009-71015789e137",
+        "01c5a80e-0817-d9e1-0009-71015789e15b",
+        "01c5a80e-0817-d9e1-0009-71015789e17f",
+        "01c5a80e-0817-d8aa-0009-71015789d8c7"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.201,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_12",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 2,
+      "client_elapsed_s": 0.3810229580049054,
+      "query_id": "01c5a80e-0817-d9e1-0009-71015789e227",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d8aa-0009-71015789d8f7",
+        "01c5a80e-0817-d9e1-0009-71015789e1c7",
+        "01c5a80e-0817-d8aa-0009-71015789d933",
+        "01c5a80e-0817-d9e1-0009-71015789e207",
+        "01c5a80e-0817-d9e1-0009-71015789e227"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.126,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_13",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 42,
+      "client_elapsed_s": 0.47880558400356676,
+      "query_id": "01c5a80e-0817-d9e1-0009-71015789e2d7",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d9e1-0009-71015789e237",
+        "01c5a80e-0817-d8aa-0009-71015789d9af",
+        "01c5a80e-0817-d9e1-0009-71015789e287",
+        "01c5a80e-0817-d9e1-0009-71015789e2d7",
+        "01c5a80e-0817-d8aa-0009-71015789da27"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.217,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_14",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 1,
+      "client_elapsed_s": 0.36380204200395383,
+      "query_id": "01c5a80e-0817-d8aa-0009-71015789dafb",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d9e1-0009-71015789e33b",
+        "01c5a80e-0817-d9e1-0009-71015789e363",
+        "01c5a80e-0817-d9e1-0009-71015789e38b",
+        "01c5a80e-0817-d9e1-0009-71015789e3b7",
+        "01c5a80e-0817-d8aa-0009-71015789dafb"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.118,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_15",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 1,
+      "client_elapsed_s": 0.4112131669971859,
+      "query_id": "01c5a80e-0817-d8aa-0009-71015789db4b",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d8aa-0009-71015789db0f",
+        "01c5a80e-0817-d9e1-0009-71015789e41b",
+        "01c5a80e-0817-d8aa-0009-71015789db4b",
+        "01c5a80e-0817-d8aa-0009-71015789db7b",
+        "01c5a80e-0817-d9e1-0009-71015789e463"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.157,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_16",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 18314,
+      "client_elapsed_s": 1.0845566670031985,
+      "query_id": "01c5a80f-0817-d9e1-0009-71015789e5fb",
+      "attempt_query_ids": [
+        "01c5a80e-0817-d9e1-0009-71015789e49b",
+        "01c5a80f-0817-d9e1-0009-71015789e543",
+        "01c5a80f-0817-d8aa-0009-71015789dc87",
+        "01c5a80f-0817-d9e1-0009-71015789e5b3",
+        "01c5a80f-0817-d9e1-0009-71015789e5fb"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.234,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_17",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 1,
+      "client_elapsed_s": 0.40811075000237906,
+      "query_id": "01c5a80f-0817-d9e1-0009-71015789e667",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d9e1-0009-71015789e63b",
+        "01c5a80f-0817-d9e1-0009-71015789e667",
+        "01c5a80f-0817-d9e1-0009-71015789e687",
+        "01c5a80f-0817-d9e1-0009-71015789e697",
+        "01c5a80f-0817-d9e1-0009-71015789e6d3"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.163,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_18",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 57,
+      "client_elapsed_s": 0.5137259170005564,
+      "query_id": "01c5a80f-0817-d8aa-0009-71015789de4b",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d8aa-0009-71015789de17",
+        "01c5a80f-0817-d8aa-0009-71015789de4b",
+        "01c5a80f-0817-d8aa-0009-71015789de73",
+        "01c5a80f-0817-d8aa-0009-71015789de8b",
+        "01c5a80f-0817-d9e1-0009-71015789e763"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.24,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_19",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 1,
+      "client_elapsed_s": 0.44121875000564614,
+      "query_id": "01c5a80f-0817-d9e1-0009-71015789e7cb",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d9e1-0009-71015789e77b",
+        "01c5a80f-0817-d9e1-0009-71015789e7a7",
+        "01c5a80f-0817-d9e1-0009-71015789e7cb",
+        "01c5a80f-0817-d8aa-0009-71015789df63",
+        "01c5a80f-0817-d9e1-0009-71015789e807"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.147,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_20",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 186,
+      "client_elapsed_s": 0.4718386250024196,
+      "query_id": "01c5a80f-0817-d9e1-0009-71015789e873",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d9e1-0009-71015789e817",
+        "01c5a80f-0817-d8aa-0009-71015789dfcb",
+        "01c5a80f-0817-d8aa-0009-71015789dffb",
+        "01c5a80f-0817-d9e1-0009-71015789e873",
+        "01c5a80f-0817-d8aa-0009-7101578a2047"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.203,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_21",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 100,
+      "client_elapsed_s": 0.5506145000035758,
+      "query_id": "01c5a80f-0817-d9e1-0009-71015789e8db",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d8aa-0009-7101578a206f",
+        "01c5a80f-0817-d9e1-0009-71015789e8db",
+        "01c5a80f-0817-d8aa-0009-7101578a20af",
+        "01c5a80f-0817-d8aa-0009-7101578a20cf",
+        "01c5a80f-0817-d8aa-0009-7101578a20f3"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.273,
+      "validation": "PASS",
+      "validation_error": null
+    },
+    {
+      "query": "query_22",
+      "iteration": 1,
+      "status": "OK",
+      "row_count": 7,
+      "client_elapsed_s": 0.3899865000057616,
+      "query_id": "01c5a80f-0817-d9e1-0009-71015789e99b",
+      "attempt_query_ids": [
+        "01c5a80f-0817-d8aa-0009-7101578a210f",
+        "01c5a80f-0817-d9e1-0009-71015789e94f",
+        "01c5a80f-0817-d9e1-0009-71015789e977",
+        "01c5a80f-0817-d9e1-0009-71015789e98f",
+        "01c5a80f-0817-d9e1-0009-71015789e99b"
+      ],
+      "error": null,
+      "server_elapsed_s": 0.151,
+      "validation": "PASS",
+      "validation_error": null
+    }
+  ]
+}
