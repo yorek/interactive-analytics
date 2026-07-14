@@ -1,6 +1,6 @@
 # TPC-H Benchmark on Snowflake Interactive Warehouse
 
-A small Python harness that runs the [TPC-H query set](https://github.com/ClickHouse/tpc-h-openhouse/tree/main/snowflake/queries) against a Snowflake **Interactive Warehouse**. Setup copies TPC-H tables from Snowflake's shared [`SNOWFLAKE_SAMPLE_DATA`](https://docs.snowflake.com/en/user-guide/sample-data-tpch) database into your own benchmark database.
+A small Python harness that runs the [TPC-H query set](https://github.com/Snowflake-Labs/interactive-analytics/tree/main/tpc-h/queries) against a Snowflake **Interactive Warehouse**. Setup copies TPC-H tables from Snowflake's shared [`SNOWFLAKE_SAMPLE_DATA`](https://docs.snowflake.com/en/user-guide/sample-data-tpch) database into your own benchmark database.
 
 ## Data source
 
@@ -8,7 +8,7 @@ This project reads from [`SNOWFLAKE_SAMPLE_DATA`](https://docs.snowflake.com/en/
 
 See [Sample data: TPC-H](https://docs.snowflake.com/en/user-guide/sample-data-tpch) for schema details, query definitions, and Snowflake's benchmarking recommendations.
 
-## Layout
+## Repo Layout
 
 ```
 .
@@ -38,8 +38,8 @@ See [Sample data: TPC-H](https://docs.snowflake.com/en/user-guide/sample-data-tp
 
 ## Prerequisites
 
-- `uv` (the rule for this repo) — `curl -LsSf https://astral.sh/uv/install.sh | sh`
-- A Snowflake connection in `~/.snowflake/connections.toml`, with a role (`SYSADMIN` is used in the setup scripts) that can create databases and warehouses, and read the source schemas in `SNOWFLAKE_SAMPLE_DATA`: `TPCH_SF1`, `TPCH_SF10`, `TPCH_SF100`, and `TPCH_SF1000`.
+- `uv` to run python and manage virtual environment and packages. See: [uv Installation](https://docs.astral.sh/uv/getting-started/installation/)
+- A Snowflake connection in `~/.snowflake/connections.toml`, with a role (`SYSADMIN` is used in the setup scripts) that can create databases and warehouses, and read the source schemas in `SNOWFLAKE_SAMPLE_DATA`: `TPCH_SF1`, `TPCH_SF10`, `TPCH_SF100`, and `TPCH_SF1000`. You can use `snow` CLI to [set up the connection](https://docs.snowflake.com/en/developer-guide/snowflake-cli/connecting/configure-connections).
 - Copy `.env.example` to `.env` and set at least `CONNECTION_NAME` (the connection name from `connections.toml`).
 
 ```bash
@@ -69,9 +69,9 @@ Standard tables live in `TPCH_SF<scale>`; interactive tables live in `TPCH_SF<sc
 | `IW_TPCH_BENCH` | Database | shared across scales; created if not exists |
 | `TPCH_SF<scale>` | Schema | 8 standard tables (CTAS from `SNOWFLAKE_SAMPLE_DATA.TPCH_SF<scale>`) |
 | `TPCH_SF<scale>_IT` | Schema | 8 interactive tables, clustered for the benchmark workload |
-| `IW_TPCH_LOAD_WH` | Standard warehouse | temporary; sized for the CTAS load and dropped at the end of setup (interactive warehouses cannot run DDL) |
-| `TPCH_BENCH_WH_<scale>` | Standard warehouse | used by `--target standard` |
-| `IW_TPCH_BENCH_WH_<scale>` | Interactive warehouse | attached to the eight `TPCH_SF<scale>_IT` tables; `FALLBACK_WAREHOUSE` is `TPCH_BENCH_WH_<scale>` |
+| `IW_TPCH_LOAD_WH` | Standard warehouse | temporary; sized for the CTAS load and dropped at the end of setup |
+| `TPCH_BENCH_WH_<scale>` | Standard warehouse | used for standard warehouse benchmark|
+| `IW_TPCH_BENCH_WH_<scale>` | Interactive warehouse | used for interactive warehouse benchmark; attached to the eight `TPCH_SF<scale>_IT` tables; `FALLBACK_WAREHOUSE` is `TPCH_BENCH_WH_<scale>` |
 
 Per scale:
 
@@ -127,7 +127,7 @@ Each run writes `results/run_<target>_sf<scale>_<workload>_<UTC-timestamp>.json`
 
 ## Result validation (SF1)
 
-When you run the benchmark with `--scale 1`, each successful query is checked against the reference rows in `tpc-h-results-1GB.json`. Validation runs automatically after all queries finish; no extra flag is required.
+When you run the benchmark with `--scale 1`, each successful query is checked against the reference rows in `tpc-h-results-1GB.json`. Validation runs automatically after all queries finish; no extra flag is required. JSON file has been generated from TPC-H PDF documentation.
 
 ### What is checked
 
